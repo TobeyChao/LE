@@ -1,42 +1,62 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="源文件">
-      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
-      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
-    </Filter>
-    <Filter Include="头文件">
-      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
-      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
-    </Filter>
     <Filter Include="资源文件">
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="ImGui">
+      <UniqueIdentifier>{8e8405a0-5ed9-401d-942b-aa543a093824}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Common">
+      <UniqueIdentifier>{adc50236-abb5-43dc-928f-f974690bc4c8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="App">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="ImGui\Src">
+      <UniqueIdentifier>{1bf34bef-e5af-4dbe-9af9-ba6c4296fa82}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="d3d_app.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="d3d_util.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="d3d_app.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="TSingleton.h">
-      <Filter>头文件</Filter>
+      <Filter>Common</Filter>
     </ClInclude>
-    <ClInclude Include="d3d_util.h">
-      <Filter>头文件</Filter>
+    <ClInclude Include="D3D12App.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="D3D12InputLayouts.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="D3D12Util.h">
+      <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="d3dx12.h">
-      <Filter>头文件</Filter>
+      <Filter>Common</Filter>
     </ClInclude>
+    <ClInclude Include="GameTimer.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="PrimitiveTypes.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Main.cpp">
+      <Filter>App</Filter>
+    </ClCompile>
+    <ClCompile Include="D3D12App.cpp">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="D3D12InputLayouts.cpp">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="D3D12Util.cpp">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="GameTimer.cpp">
+      <Filter>Common</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

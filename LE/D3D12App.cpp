@@ -1,35 +1,36 @@
-#include "d3d_app.h"
+#include "D3D12App.h"
+#include "GameTimer.h"
 
-d3d_app::d3d_app()
+D3D12App::D3D12App()
 	:
-	m_depth_stencil_format(DXGI_FORMAT_D24_UNORM_S8_UINT),
-	m_dxgi_format(DXGI_FORMAT_R8G8B8A8_UNORM)
+	mDepthStencilFormat(DXGI_FORMAT_D24_UNORM_S8_UINT),
+	mDXGIFormat(DXGI_FORMAT_R8G8B8A8_UNORM)
 {
 }
 
-d3d_app::~d3d_app()
+D3D12App::~D3D12App()
 {
-	if (m_d3d_device)
-		flush_command_queue();
+	if (mD3D12Device)
+		FlushCommandQueue();
 }
 
-void d3d_app::init(HWND hwnd, int client_width, int client_height)
+void D3D12App::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 {
-	m_main_wnd = hwnd;
-	m_client_width = client_width;
-	m_client_height = client_height;
+	mMainWnd = hwnd;
+	mClientWidth = clientWidth;
+	mClientHeight = clientHeight;
 
-	init_d3d();
+	InitD3D();
 
-	on_resize();
+	OnResize();
 }
 
-LRESULT d3d_app::main_wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+LRESULT D3D12App::MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-	return d3d_app::GetInstancePtr()->msg_proc(hwnd, msg, wParam, lParam);
+	return D3D12App::GetInstancePtr()->MsgProc(hwnd, msg, wParam, lParam);
 }
 
-LRESULT d3d_app::msg_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+LRESULT D3D12App::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	switch (msg)
 	{
@@ -39,54 +40,54 @@ LRESULT d3d_app::msg_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_ACTIVATE:
 		if (LOWORD(wParam) == WA_INACTIVE)
 		{
-			//mAppPaused = true;
-			//mTimer.Stop();
+			mAppPaused = true;
+			GameTimer::GetInstancePtr()->Stop();
 		}
 		else
 		{
-			//mAppPaused = false;
-			//mTimer.Start();
+			mAppPaused = false;
+			GameTimer::GetInstancePtr()->Start();
 		}
 		return 0;
 
 		// WM_SIZE is sent when the user resizes the window.  
 	case WM_SIZE:
 		// Save the new client area dimensions.
-		m_client_width = LOWORD(lParam);
-		m_client_height = HIWORD(lParam);
-		if (m_d3d_device)
+		mClientWidth = LOWORD(lParam);
+		mClientHeight = HIWORD(lParam);
+		if (mD3D12Device)
 		{
 			if (wParam == SIZE_MINIMIZED)
 			{
-				m_app_paused = true;
-				m_minimized = true;
-				m_maximized = false;
+				mAppPaused = true;
+				mMinimized = true;
+				mMaximized = false;
 			}
 			else if (wParam == SIZE_MAXIMIZED)
 			{
-				m_app_paused = false;
-				m_minimized = false;
-				m_maximized = true;
-				on_resize();
+				mAppPaused = false;
+				mMinimized = false;
+				mMaximized = true;
+				OnResize();
 			}
 			else if (wParam == SIZE_RESTORED)
 			{
 				// Restoring from minimized state?
-				if (m_minimized)
+				if (mMinimized)
 				{
-					m_app_paused = false;
-					m_minimized = false;
-					on_resize();
+					mAppPaused = false;
+					mMinimized = false;
+					OnResize();
 				}
 
 				// Restoring from maximized state?
-				else if (m_maximized)
+				else if (mMaximized)
 				{
-					m_app_paused = false;
-					m_maximized = false;
-					on_resize();
+					mAppPaused = false;
+					mMaximized = false;
+					OnResize();
 				}
-				else if (m_resizing)
+				else if (mResizing)
 				{
 					// If user is dragging the resize bars, we do not resize 
 					// the buffers here because as the user continuously 
@@ -99,7 +100,7 @@ LRESULT d3d_app::msg_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				}
 				else // API call such as SetWindowPos or mSwapChain->SetFullscreenState.
 				{
-					on_resize();
+					OnResize();
 				}
 			}
 		}
@@ -107,18 +108,18 @@ LRESULT d3d_app::msg_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 		// WM_EXITSIZEMOVE is sent when the user grabs the resize bars.
 	case WM_ENTERSIZEMOVE:
-		m_app_paused = true;
-		m_resizing = true;
-		//mTimer.Stop();
+		mAppPaused = true;
+		mResizing = true;
+		GameTimer::GetInstancePtr()->Stop();
 		return 0;
 
 		// WM_EXITSIZEMOVE is sent when the user releases the resize bars.
 		// Here we reset everything based on the new window dimensions.
 	case WM_EXITSIZEMOVE:
-		m_app_paused = false;
-		m_resizing = false;
-		//mTimer.Start();
-		on_resize();
+		mAppPaused = false;
+		mResizing = false;
+		GameTimer::GetInstancePtr()->Start();
+		OnResize();
 		return 0;
 
 		// WM_DESTROY is sent when the window is being destroyed.
@@ -160,56 +161,53 @@ LRESULT d3d_app::msg_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		{
 			PostQuitMessage(0);
 		}
-		else if ((int)wParam == VK_F2)
-			//Set4xMsaaState(!m4xMsaaState);
-
 		return 0;
 	}
-	
+
 	return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
-void d3d_app::on_resize()
+void D3D12App::OnResize()
 {
-	assert(m_d3d_device);
-	assert(m_swap_chain);
-	assert(m_command_allocator);
+	assert(mD3D12Device);
+	assert(mSwapChain);
+	assert(mCommandAllocator);
 
-	flush_command_queue();
+	FlushCommandQueue();
 
-	ThrowIfFailed(m_command_list->Reset(m_command_allocator.Get(), nullptr));
+	ThrowIfFailed(mCommandList->Reset(mCommandAllocator.Get(), nullptr));
 	// Release the previous resources we will be recreating.
-	for (int i = 0; i < swap_chain_buffer_count; ++i)
-		m_swap_chain_buffer[i].Reset();
-	m_depth_stencil_buffer.Reset();
+	for (int i = 0; i < SwapChainBufferCount; ++i)
+		mSwapChainBuffer[i].Reset();
+	mDepthStencilBuffer.Reset();
 
 	// Resize the swap chain.
-	ThrowIfFailed(m_swap_chain->ResizeBuffers(
-		swap_chain_buffer_count,
-		m_client_width, m_client_height,
-		m_dxgi_format,
+	ThrowIfFailed(mSwapChain->ResizeBuffers(
+		SwapChainBufferCount,
+		mClientWidth, mClientHeight,
+		mDXGIFormat,
 		DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH));
 
-	m_current_back_buffer = 0;
-	create_render_resource();
+	mCurrentBackBuffer = 0;
+	CreateRenderResource();
 }
 
-void d3d_app::init_d3d()
+void D3D12App::InitD3D()
 {
-	create_d3d_device();
-	create_command_objects();
-	create_swap_chain();
-	create_descriptor_heap();
+	CreateD3D12Device();
+	CreateCommandObjects();
+	CreateSwapChain();
+	CreateDescriptorHeap();
 }
 
-void d3d_app::create_d3d_device()
+void D3D12App::CreateD3D12Device()
 {
 #ifdef DX12_ENABLE_DEBUG_LAYER
 	ComPtr<ID3D12Debug> debug_controller;
 	ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(debug_controller.GetAddressOf())));
 	debug_controller->EnableDebugLayer();
 #endif // defined(DEBUG) || defined(_DEBUG)
-	ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(m_dxgi_factory.GetAddressOf())));
+	ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(mDXGIFactory.GetAddressOf())));
 
 	//D3D_FEATURE_LEVEL feature_levers[] =
 	//{
@@ -229,62 +227,62 @@ void d3d_app::create_d3d_device()
 	//feature_levels_info.pFeatureLevelsRequested = feature_levers;
 
 	// 创建设备
-	HRESULT hr = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(m_d3d_device.GetAddressOf()));
+	HRESULT hr = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(mD3D12Device.GetAddressOf()));
 	if (FAILED(hr))
 	{
 		ComPtr<IDXGIAdapter> warp_adapter;
-		ThrowIfFailed(m_dxgi_factory->EnumWarpAdapter(IID_PPV_ARGS(warp_adapter.GetAddressOf())));
+		ThrowIfFailed(mDXGIFactory->EnumWarpAdapter(IID_PPV_ARGS(warp_adapter.GetAddressOf())));
 
-		ThrowIfFailed(D3D12CreateDevice(warp_adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(m_d3d_device.GetAddressOf())))
+		ThrowIfFailed(D3D12CreateDevice(warp_adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(mD3D12Device.GetAddressOf())))
 	}
 
 	//m_d3d_device->CheckFeatureSupport(D3D12_FEATURE_FEATURE_LEVELS, &feature_levels_info, sizeof(feature_levels_info));
 
 	// 创建围栏并获取资源描述符大小
-	ThrowIfFailed(m_d3d_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(m_fence.GetAddressOf())));
+	ThrowIfFailed(mD3D12Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(mFence.GetAddressOf())));
 
-	m_rtv_descriptor_size = m_d3d_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-	m_dsv_descriptor_size = m_d3d_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
-	m_cbv_descriptor_size = m_d3d_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	mRtvDescriptorSize = mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	mDsvDescriptorSize = mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+	mCbvDescriptorSize = mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	// 检查多重采样质量级别
 	D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS quality_level;
-	quality_level.Format = m_dxgi_format;
+	quality_level.Format = mDXGIFormat;
 	quality_level.SampleCount = 8;
 	quality_level.NumQualityLevels = 0;
 	quality_level.Flags = D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE;
-	ThrowIfFailed(m_d3d_device->CheckFeatureSupport(D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS, &quality_level, sizeof(quality_level)));
-	m_num_quality_levels = quality_level.NumQualityLevels;
-	assert(m_num_quality_levels > 0 && "Unexpected MSAA quality level.");
+	ThrowIfFailed(mD3D12Device->CheckFeatureSupport(D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS, &quality_level, sizeof(quality_level)));
+	mMSAAQualityLevels = quality_level.NumQualityLevels;
+	assert(mMSAAQualityLevels > 0 && "Unexpected MSAA quality level.");
 
 #ifdef _DEBUG
-	log_adapters();
+	LogAdapters();
 #endif // _DEBUG
 }
 
-ID3D12Resource* d3d_app::current_back_buffer() const
+ID3D12Resource* D3D12App::CurrentBackBuffer() const
 {
-	return m_swap_chain_buffer[m_current_back_buffer].Get();
+	return mSwapChainBuffer[mCurrentBackBuffer].Get();
 }
 
-D3D12_CPU_DESCRIPTOR_HANDLE d3d_app::current_back_buffer_view() const
+D3D12_CPU_DESCRIPTOR_HANDLE D3D12App::CurrentBackBufferView() const
 {
-	return CD3DX12_CPU_DESCRIPTOR_HANDLE(m_rtv_heap->GetCPUDescriptorHandleForHeapStart(),
-		m_current_back_buffer,
-		m_rtv_descriptor_size);
+	return CD3DX12_CPU_DESCRIPTOR_HANDLE(mRtvHeap->GetCPUDescriptorHandleForHeapStart(),
+		mCurrentBackBuffer,
+		mRtvDescriptorSize);
 }
 
-D3D12_CPU_DESCRIPTOR_HANDLE d3d_app::depth_stencil_view() const
+D3D12_CPU_DESCRIPTOR_HANDLE D3D12App::DepthStencilView() const
 {
-	return m_dsv_heap->GetCPUDescriptorHandleForHeapStart();
+	return mDsvHeap->GetCPUDescriptorHandleForHeapStart();
 }
 
-void d3d_app::log_adapters()
+void D3D12App::LogAdapters()
 {
 	UINT i = 0;
 	IDXGIAdapter* adapter = nullptr;
 	std::vector<IDXGIAdapter*> adapter_list;
-	while (m_dxgi_factory->EnumAdapters(i, &adapter) != DXGI_ERROR_NOT_FOUND)
+	while (mDXGIFactory->EnumAdapters(i, &adapter) != DXGI_ERROR_NOT_FOUND)
 	{
 		DXGI_ADAPTER_DESC desc;
 		adapter->GetDesc(&desc);
@@ -297,12 +295,12 @@ void d3d_app::log_adapters()
 	}
 	for (size_t i = 0; i < adapter_list.size(); i++)
 	{
-		log_adapter_outputs(adapter_list[i]);
+		LogAdapterOutputs(adapter_list[i]);
 		ReleaseCom(adapter_list[i]);
 	}
 }
 
-void d3d_app::log_adapter_outputs(IDXGIAdapter* adapter)
+void D3D12App::LogAdapterOutputs(IDXGIAdapter* adapter)
 {
 	UINT i = 0;
 	IDXGIOutput* output = nullptr;
@@ -315,13 +313,13 @@ void d3d_app::log_adapter_outputs(IDXGIAdapter* adapter)
 		text += desc.DeviceName;
 		text += L"\n";
 		OutputDebugString(text.c_str());
-		log_output_display_modes(output, DXGI_FORMAT_B8G8R8A8_UNORM);
+		LogOutputDisplayModes(output, DXGI_FORMAT_B8G8R8A8_UNORM);
 		ReleaseCom(output);
 		++i;
 	}
 }
 
-void d3d_app::log_output_display_modes(IDXGIOutput* output, DXGI_FORMAT format)
+void D3D12App::LogOutputDisplayModes(IDXGIOutput* output, DXGI_FORMAT format)
 {
 	UINT count = 0;
 	UINT flags = 0;
@@ -343,132 +341,132 @@ void d3d_app::log_output_display_modes(IDXGIOutput* output, DXGI_FORMAT format)
 	}
 }
 
-void d3d_app::create_command_objects()
+void D3D12App::CreateCommandObjects()
 {
 	// 创建命令队列和命令列表
 	D3D12_COMMAND_QUEUE_DESC queue_desc = {};
 	queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 	queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-	ThrowIfFailed(m_d3d_device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(m_command_queue.GetAddressOf())));
-	ThrowIfFailed(m_d3d_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(m_command_allocator.GetAddressOf())));
-	ThrowIfFailed(m_d3d_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
-		m_command_allocator.Get(), nullptr, IID_PPV_ARGS(m_command_list.GetAddressOf())));
-	m_command_list->Close();
+	ThrowIfFailed(mD3D12Device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(mCommandQueue.GetAddressOf())));
+	ThrowIfFailed(mD3D12Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(mCommandAllocator.GetAddressOf())));
+	ThrowIfFailed(mD3D12Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
+		mCommandAllocator.Get(), nullptr, IID_PPV_ARGS(mCommandList.GetAddressOf())));
+	mCommandList->Close();
 }
 
-void d3d_app::create_swap_chain()
+void D3D12App::CreateSwapChain()
 {
-	m_swap_chain.Reset();
+	mSwapChain.Reset();
 	DXGI_SWAP_CHAIN_DESC sd;
-	sd.BufferDesc.Width = m_client_width;
-	sd.BufferDesc.Height = m_client_height;
-	sd.BufferDesc.Format = m_dxgi_format;
+	sd.BufferDesc.Width = mClientWidth;
+	sd.BufferDesc.Height = mClientHeight;
+	sd.BufferDesc.Format = mDXGIFormat;
 	sd.BufferDesc.RefreshRate.Numerator = 144;
 	sd.BufferDesc.RefreshRate.Denominator = 1;
 	sd.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
 	sd.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
 	sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	sd.BufferCount = swap_chain_buffer_count;
-	sd.OutputWindow = m_main_wnd;
+	sd.BufferCount = SwapChainBufferCount;
+	sd.OutputWindow = mMainWnd;
 	sd.Windowed = true;
 	sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-	sd.SampleDesc.Count = m_enable_msaa ? 4 : 1;
-	sd.SampleDesc.Quality = m_enable_msaa ? (m_num_quality_levels - 1) : 0;
+	sd.SampleDesc.Count = mEnableMSAA ? 4 : 1;
+	sd.SampleDesc.Quality = mEnableMSAA ? (mMSAAQualityLevels - 1) : 0;
 	sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
-	ThrowIfFailed(m_dxgi_factory->CreateSwapChain(m_command_queue.Get(), &sd, m_swap_chain.GetAddressOf()));
+	ThrowIfFailed(mDXGIFactory->CreateSwapChain(mCommandQueue.Get(), &sd, mSwapChain.GetAddressOf()));
 }
 
-void d3d_app::create_descriptor_heap()
+void D3D12App::CreateDescriptorHeap()
 {
 	D3D12_DESCRIPTOR_HEAP_DESC rtv_desc;
 	rtv_desc.NodeMask = 0;
 	rtv_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	rtv_desc.NumDescriptors = swap_chain_buffer_count;
+	rtv_desc.NumDescriptors = SwapChainBufferCount;
 	rtv_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-	ThrowIfFailed(m_d3d_device->CreateDescriptorHeap(&rtv_desc, IID_PPV_ARGS(m_rtv_heap.GetAddressOf())));
+	ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&rtv_desc, IID_PPV_ARGS(mRtvHeap.GetAddressOf())));
 
 	D3D12_DESCRIPTOR_HEAP_DESC dsv_desc;
 	dsv_desc.NodeMask = 0;
 	dsv_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	dsv_desc.NumDescriptors = 1;
 	dsv_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-	ThrowIfFailed(m_d3d_device->CreateDescriptorHeap(&dsv_desc, IID_PPV_ARGS(m_dsv_heap.GetAddressOf())));
+	ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&dsv_desc, IID_PPV_ARGS(mDsvHeap.GetAddressOf())));
 }
 
-void d3d_app::create_render_resource()
+void D3D12App::CreateRenderResource()
 {
 	// 创建渲染目标视图
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_heap_handle(m_rtv_heap->GetCPUDescriptorHandleForHeapStart());
-	for (UINT i = 0; i < swap_chain_buffer_count; i++)
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_heap_handle(mRtvHeap->GetCPUDescriptorHandleForHeapStart());
+	for (UINT i = 0; i < SwapChainBufferCount; i++)
 	{
-		ThrowIfFailed(m_swap_chain->GetBuffer(i, IID_PPV_ARGS(m_swap_chain_buffer[i].GetAddressOf())));
-		m_d3d_device->CreateRenderTargetView(m_swap_chain_buffer[i].Get(), nullptr, rtv_heap_handle);
-		rtv_heap_handle.Offset(1, m_rtv_descriptor_size);
+		ThrowIfFailed(mSwapChain->GetBuffer(i, IID_PPV_ARGS(mSwapChainBuffer[i].GetAddressOf())));
+		mD3D12Device->CreateRenderTargetView(mSwapChainBuffer[i].Get(), nullptr, rtv_heap_handle);
+		rtv_heap_handle.Offset(1, mRtvDescriptorSize);
 	}
 
 	// 创建深度/模板缓冲区及其视图
 	D3D12_RESOURCE_DESC depth_stencil_desc;
 	depth_stencil_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 	depth_stencil_desc.MipLevels = 1;
-	depth_stencil_desc.Format = m_depth_stencil_format;
-	depth_stencil_desc.Width = m_client_width;
-	depth_stencil_desc.Height = m_client_height;
+	depth_stencil_desc.Format = mDepthStencilFormat;
+	depth_stencil_desc.Width = mClientWidth;
+	depth_stencil_desc.Height = mClientHeight;
 	depth_stencil_desc.Alignment = 0;
 	depth_stencil_desc.DepthOrArraySize = 1;
-	depth_stencil_desc.SampleDesc.Count = m_enable_msaa ? 4 : 1;;
-	depth_stencil_desc.SampleDesc.Quality = m_enable_msaa ? (m_num_quality_levels - 1) : 0;
+	depth_stencil_desc.SampleDesc.Count = mEnableMSAA ? 4 : 1;;
+	depth_stencil_desc.SampleDesc.Quality = mEnableMSAA ? (mMSAAQualityLevels - 1) : 0;
 	depth_stencil_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
 	depth_stencil_desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
 	D3D12_CLEAR_VALUE opt_clear;
-	opt_clear.Format = m_depth_stencil_format;
+	opt_clear.Format = mDepthStencilFormat;
 	opt_clear.DepthStencil.Depth = 1.0f;
 	opt_clear.DepthStencil.Stencil = 0;
 
-	ThrowIfFailed(m_d3d_device->CreateCommittedResource(
+	ThrowIfFailed(mD3D12Device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 		D3D12_HEAP_FLAG_NONE,
 		&depth_stencil_desc,
 		D3D12_RESOURCE_STATE_COMMON,
 		&opt_clear,
-		IID_PPV_ARGS(m_depth_stencil_buffer.GetAddressOf())
+		IID_PPV_ARGS(mDepthStencilBuffer.GetAddressOf())
 	));
-	m_d3d_device->CreateDepthStencilView(m_depth_stencil_buffer.Get(), nullptr, depth_stencil_view());
+	mD3D12Device->CreateDepthStencilView(mDepthStencilBuffer.Get(), nullptr, DepthStencilView());
 
 
-	m_command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		m_depth_stencil_buffer.Get(),
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		mDepthStencilBuffer.Get(),
 		D3D12_RESOURCE_STATE_COMMON,
 		D3D12_RESOURCE_STATE_DEPTH_WRITE
 	));
 
 	// Execute the resize commands.
-	ThrowIfFailed(m_command_list->Close());
-	ID3D12CommandList* cmdsLists[] = { m_command_list.Get() };
-	m_command_queue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+	ThrowIfFailed(mCommandList->Close());
+	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
+	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 
 	// Wait until resize is complete.
-	flush_command_queue();
+	FlushCommandQueue();
 
 	// Update the viewport transform to cover the client area.
-	m_screen_viewport.TopLeftX = 0;
-	m_screen_viewport.TopLeftY = 0;
-	m_screen_viewport.Width = static_cast<float>(m_client_width);
-	m_screen_viewport.Height = static_cast<float>(m_client_height);
-	m_screen_viewport.MinDepth = 0.0f;
-	m_screen_viewport.MaxDepth = 1.0f;
+	mScreenViewport.TopLeftX = 0;
+	mScreenViewport.TopLeftY = 0;
+	mScreenViewport.Width = static_cast<float>(mClientWidth);
+	mScreenViewport.Height = static_cast<float>(mClientHeight);
+	mScreenViewport.MinDepth = 0.0f;
+	mScreenViewport.MaxDepth = 1.0f;
 
-	m_scissor_rect = { 0, 0, m_client_width, m_client_height };
+	mScissorRect = { 0, 0, mClientWidth, mClientHeight };
 }
 
-void d3d_app::flush_command_queue()
+void D3D12App::FlushCommandQueue()
 {
-	m_current_fence++;
-	ThrowIfFailed(m_command_queue->Signal(m_fence.Get(), m_current_fence));
-	if (m_fence->GetCompletedValue() < m_current_fence)
+	mCurrentFence++;
+	ThrowIfFailed(mCommandQueue->Signal(mFence.Get(), mCurrentFence));
+	if (mFence->GetCompletedValue() < mCurrentFence)
 	{
 		HANDLE eventHandle = CreateEventEx(nullptr, nullptr, FALSE, EVENT_ALL_ACCESS);
-		ThrowIfFailed(m_fence->SetEventOnCompletion(m_current_fence, eventHandle));
+		ThrowIfFailed(mFence->SetEventOnCompletion(mCurrentFence, eventHandle));
 		WaitForSingleObject(eventHandle, INFINITE);
 		CloseHandle(eventHandle);
 	}

@@ -18,6 +18,22 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="D3D12App.h" />
+    <ClInclude Include="D3D12InputLayouts.h" />
+    <ClInclude Include="D3D12Util.h" />
+    <ClInclude Include="d3dx12.h" />
+    <ClInclude Include="GameTimer.h" />
+    <ClInclude Include="PrimitiveTypes.h" />
+    <ClInclude Include="TSingleton.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="D3D12App.cpp" />
+    <ClCompile Include="D3D12InputLayouts.cpp" />
+    <ClCompile Include="D3D12Util.cpp" />
+    <ClCompile Include="GameTimer.cpp" />
+    <ClCompile Include="Main.cpp" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
@@ -138,17 +154,6 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
-  <ItemGroup>
-    <ClCompile Include="d3d_app.cpp" />
-    <ClCompile Include="d3d_util.cpp" />
-    <ClCompile Include="main.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="d3dx12.h" />
-    <ClInclude Include="d3d_app.h" />
-    <ClInclude Include="d3d_util.h" />
-    <ClInclude Include="TSingleton.h" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

@@ -1,61 +1,83 @@
-#include "d3d_app.h"
+#include "D3D12App.h"
+#include "GameTimer.h"
 #include <DirectXColors.h>
 
 using namespace DirectX;
 
-class demo : public d3d_app
+class Demo : public D3D12App
 {
 public:
-
-	demo()
+	void OnResize() override
 	{
+		D3D12App::OnResize();
 	}
 
-	~demo()
-	{
-	}
-
-	void on_resize() override
-	{
-		d3d_app::on_resize();
-	}
-
-	void update() override
+	void Update() override
 	{
 
 	}
 
-	void draw() override
+	void Draw() override
 	{
 		// Rendering
-		ThrowIfFailed(m_command_allocator->Reset());
+		ThrowIfFailed(mCommandAllocator->Reset());
 
-		m_command_list->Reset(m_command_allocator.Get(), nullptr);
+		mCommandList->Reset(mCommandAllocator.Get(), nullptr);
 
-		m_command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(current_back_buffer(),
+		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
 			D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
-		m_command_list->RSSetViewports(1, &m_screen_viewport);
-		m_command_list->RSSetScissorRects(1, &m_scissor_rect);
+		mCommandList->RSSetViewports(1, &mScreenViewport);
+		mCommandList->RSSetScissorRects(1, &mScissorRect);
 
-		m_command_list->ClearRenderTargetView(current_back_buffer_view(), Colors::LightSteelBlue, 0, nullptr);
-		m_command_list->ClearDepthStencilView(depth_stencil_view(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+		mCommandList->ClearRenderTargetView(CurrentBackBufferView(), Colors::LightSteelBlue, 0, nullptr);
+		mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
-		m_command_list->OMSetRenderTargets(1, &current_back_buffer_view(), true, &depth_stencil_view());
+		mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
 
-		m_command_list->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(current_back_buffer(),
+		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
 			D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 
-		ThrowIfFailed(m_command_list->Close());
+		ThrowIfFailed(mCommandList->Close());
 
-		ID3D12CommandList* cmdsLists[] = { m_command_list.Get() };
-		m_command_queue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+		ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
+		mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 
 		//m_swap_chain->Present(1, 0); // Present with vsync
-		m_swap_chain->Present(0, 0); // Present without vsync
-		m_current_back_buffer = (m_current_back_buffer + 1) % swap_chain_buffer_count;
+		mSwapChain->Present(0, 0); // Present without vsync
+		mCurrentBackBuffer = (mCurrentBackBuffer + 1) % SwapChainBufferCount;
 
-		flush_command_queue();
+		FlushCommandQueue();
+	}
+
+	void calculate_frame_stats()
+	{
+		// Code computes the average frames per second, and also the 
+		// average time it takes to render one frame.  These stats 
+		// are appended to the window caption bar.
+
+		static int frameCnt = 0;
+		static float timeElapsed = 0.0f;
+
+		frameCnt++;
+
+		// Compute averages over one second period.
+		if ((GameTimer::GetInstancePtr()->TotalTime() - timeElapsed) >= 1.0f)
+		{
+			float fps = (float)frameCnt; // fps = frameCnt / 1
+			float mspf = 1000.0f / fps;
+
+			std::wstring fpsStr = std::to_wstring(fps);
+			std::wstring mspfStr = std::to_wstring(mspf);
+
+			std::wstring windowText = L"D3D12App fps: " + fpsStr + L"   mspf: " + mspfStr;
+
+			SetWindowText(mMainWnd, windowText.c_str());
+
+			// Reset for next average.
+			frameCnt = 0;
+			timeElapsed += 1.0f;
+		}
 	}
 
 private:
@@ -66,14 +88,14 @@ private:
 int main(int, char**)
 {
 	// Initialize Direct3D
-	nullptr;
 	try
 	{
-		demo* app = new demo();
+		GameTimer* timer = new GameTimer();
+		Demo* app = new Demo();
 
 		WNDCLASS wc;
 		wc.style = CS_HREDRAW | CS_VREDRAW;
-		wc.lpfnWndProc = demo::main_wnd_proc;
+		wc.lpfnWndProc = Demo::MainWndProc;
 		wc.cbClsExtra = 0;
 		wc.cbWndExtra = 0;
 		wc.hInstance = GetModuleHandle(NULL);
@@ -95,14 +117,14 @@ int main(int, char**)
 		int width = R.right - R.left;
 		int height = R.bottom - R.top;
 
-		HWND hwnd = CreateWindow(wc.lpszClassName, L"Dear ImGui DirectX12 Example",
+		HWND hwnd = CreateWindow(wc.lpszClassName, L"D3D12App",
 			WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, width, height, 0, 0, wc.hInstance, 0);
 
 		// Create application window
 		//WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, demo::main_wnd_proc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, L"ImGui Example", NULL };
 		//::RegisterClassEx(&wc);
 		//HWND hwnd = ::CreateWindow(wc.lpszClassName, L"Dear ImGui DirectX12 Example", WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, NULL, NULL, wc.hInstance, NULL);
-		app->init(hwnd, 800, 600);
+		app->Initialize(hwnd, 800, 600);
 
 		// Show the window
 		::ShowWindow(hwnd, SW_SHOW);
@@ -111,6 +133,7 @@ int main(int, char**)
 		// Main loop
 		MSG msg;
 		ZeroMemory(&msg, sizeof(msg));
+		GameTimer::GetInstancePtr()->Reset();
 		while (msg.message != WM_QUIT)
 		{
 			if (::PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE))
@@ -119,8 +142,19 @@ int main(int, char**)
 				::DispatchMessage(&msg);
 				continue;
 			}
-			app->update();
-			app->draw();
+
+			GameTimer::GetInstancePtr()->Tick();
+
+			if (!app->IsPaused())
+			{
+				app->calculate_frame_stats();
+				app->Update();
+				app->Draw();
+			}
+			else
+			{
+				Sleep(100);
+			}
 		}
 
 		delete app;
