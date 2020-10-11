@@ -45,6 +45,9 @@ public:
 	void OnResize() override
 	{
 		D3D12App::OnResize();
+		// The window resized, so update the aspect ratio and recompute the projection matrix.
+		XMMATRIX P = XMMatrixPerspectiveFovLH(0.25f * XM_PI, static_cast<float>(mClientWidth) / mClientHeight, 1.0f, 1000.0f);
+		XMStoreFloat4x4(&mProj, P);
 	}
 
 	void Update() override
