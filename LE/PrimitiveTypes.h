@@ -4,6 +4,7 @@
 
 class PrimitiveTypes
 {
+public:
 	struct PosVertex
 	{
 		PosVertex()
@@ -58,6 +59,14 @@ class PrimitiveTypes
 	struct PosColVertex
 	{
 		PosColVertex()
+			:
+			Position(0.0f, 0.0f, 0.0f),
+			Color(0.0f, 0.0f, 0.0f, 1.0f)
+		{}
+		PosColVertex(const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT4& col)
+			:
+			Position(pos),
+			Color(col)
 		{}
 		PosColVertex(float x, float y, float z, float r, float g, float b, float a)
 			:

@@ -23,14 +23,18 @@
     <ClInclude Include="D3D12InputLayouts.h" />
     <ClInclude Include="D3D12Util.h" />
     <ClInclude Include="d3dx12.h" />
+    <ClInclude Include="Demo.h" />
     <ClInclude Include="GameTimer.h" />
+    <ClInclude Include="MeshGeometry.h" />
     <ClInclude Include="PrimitiveTypes.h" />
     <ClInclude Include="TSingleton.h" />
+    <ClInclude Include="UploadBuffer.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="D3D12App.cpp" />
     <ClCompile Include="D3D12InputLayouts.cpp" />
     <ClCompile Include="D3D12Util.cpp" />
+    <ClCompile Include="Demo.cpp" />
     <ClCompile Include="GameTimer.cpp" />
     <ClCompile Include="Main.cpp" />
   </ItemGroup>

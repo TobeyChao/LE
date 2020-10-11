@@ -203,9 +203,9 @@ void D3D12App::InitD3D()
 void D3D12App::CreateD3D12Device()
 {
 #ifdef DX12_ENABLE_DEBUG_LAYER
-	ComPtr<ID3D12Debug> debug_controller;
-	ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(debug_controller.GetAddressOf())));
-	debug_controller->EnableDebugLayer();
+	ComPtr<ID3D12Debug> debugController;
+	ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(debugController.GetAddressOf())));
+	debugController->EnableDebugLayer();
 #endif // defined(DEBUG) || defined(_DEBUG)
 	ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(mDXGIFactory.GetAddressOf())));
 
@@ -246,13 +246,13 @@ void D3D12App::CreateD3D12Device()
 	mCbvDescriptorSize = mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	// 检查多重采样质量级别
-	D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS quality_level;
-	quality_level.Format = mDXGIFormat;
-	quality_level.SampleCount = 8;
-	quality_level.NumQualityLevels = 0;
-	quality_level.Flags = D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE;
-	ThrowIfFailed(mD3D12Device->CheckFeatureSupport(D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS, &quality_level, sizeof(quality_level)));
-	mMSAAQualityLevels = quality_level.NumQualityLevels;
+	D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS qualityLevel;
+	qualityLevel.Format = mDXGIFormat;
+	qualityLevel.SampleCount = 8;
+	qualityLevel.NumQualityLevels = 0;
+	qualityLevel.Flags = D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE;
+	ThrowIfFailed(mD3D12Device->CheckFeatureSupport(D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS, &qualityLevel, sizeof(qualityLevel)));
+	mMSAAQualityLevels = qualityLevel.NumQualityLevels;
 	assert(mMSAAQualityLevels > 0 && "Unexpected MSAA quality level.");
 
 #ifdef _DEBUG
@@ -281,7 +281,7 @@ void D3D12App::LogAdapters()
 {
 	UINT i = 0;
 	IDXGIAdapter* adapter = nullptr;
-	std::vector<IDXGIAdapter*> adapter_list;
+	std::vector<IDXGIAdapter*> adapterList;
 	while (mDXGIFactory->EnumAdapters(i, &adapter) != DXGI_ERROR_NOT_FOUND)
 	{
 		DXGI_ADAPTER_DESC desc;
@@ -290,13 +290,13 @@ void D3D12App::LogAdapters()
 		text += desc.Description;
 		text += L"\n";
 		OutputDebugString(text.c_str());
-		adapter_list.push_back(adapter);
+		adapterList.push_back(adapter);
 		++i;
 	}
-	for (size_t i = 0; i < adapter_list.size(); i++)
+	for (size_t i = 0; i < adapterList.size(); i++)
 	{
-		LogAdapterOutputs(adapter_list[i]);
-		ReleaseCom(adapter_list[i]);
+		LogAdapterOutputs(adapterList[i]);
+		ReleaseCom(adapterList[i]);
 	}
 }
 
@@ -325,10 +325,10 @@ void D3D12App::LogOutputDisplayModes(IDXGIOutput* output, DXGI_FORMAT format)
 	UINT flags = 0;
 	output->GetDisplayModeList(format, flags, &count, nullptr);
 
-	std::vector<DXGI_MODE_DESC> mode_list(count);
-	output->GetDisplayModeList(format, flags, &count, &mode_list[0]);
+	std::vector<DXGI_MODE_DESC> modeList(count);
+	output->GetDisplayModeList(format, flags, &count, &modeList[0]);
 
-	for (const auto& x : mode_list)
+	for (const auto& x : modeList)
 	{
 		UINT n = x.RefreshRate.Numerator;
 		UINT d = x.RefreshRate.Denominator;
@@ -344,10 +344,10 @@ void D3D12App::LogOutputDisplayModes(IDXGIOutput* output, DXGI_FORMAT format)
 void D3D12App::CreateCommandObjects()
 {
 	// 创建命令队列和命令列表
-	D3D12_COMMAND_QUEUE_DESC queue_desc = {};
-	queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-	queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-	ThrowIfFailed(mD3D12Device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(mCommandQueue.GetAddressOf())));
+	D3D12_COMMAND_QUEUE_DESC queueDesc = {};
+	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+	ThrowIfFailed(mD3D12Device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(mCommandQueue.GetAddressOf())));
 	ThrowIfFailed(mD3D12Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(mCommandAllocator.GetAddressOf())));
 	ThrowIfFailed(mD3D12Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
 		mCommandAllocator.Get(), nullptr, IID_PPV_ARGS(mCommandList.GetAddressOf())));
@@ -378,30 +378,30 @@ void D3D12App::CreateSwapChain()
 
 void D3D12App::CreateDescriptorHeap()
 {
-	D3D12_DESCRIPTOR_HEAP_DESC rtv_desc;
-	rtv_desc.NodeMask = 0;
-	rtv_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	rtv_desc.NumDescriptors = SwapChainBufferCount;
-	rtv_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-	ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&rtv_desc, IID_PPV_ARGS(mRtvHeap.GetAddressOf())));
+	D3D12_DESCRIPTOR_HEAP_DESC rtvDesc;
+	rtvDesc.NodeMask = 0;
+	rtvDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	rtvDesc.NumDescriptors = SwapChainBufferCount;
+	rtvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&rtvDesc, IID_PPV_ARGS(mRtvHeap.GetAddressOf())));
 
-	D3D12_DESCRIPTOR_HEAP_DESC dsv_desc;
-	dsv_desc.NodeMask = 0;
-	dsv_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	dsv_desc.NumDescriptors = 1;
-	dsv_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-	ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&dsv_desc, IID_PPV_ARGS(mDsvHeap.GetAddressOf())));
+	D3D12_DESCRIPTOR_HEAP_DESC dsvDesc;
+	dsvDesc.NodeMask = 0;
+	dsvDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	dsvDesc.NumDescriptors = 1;
+	dsvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+	ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&dsvDesc, IID_PPV_ARGS(mDsvHeap.GetAddressOf())));
 }
 
 void D3D12App::CreateRenderResource()
 {
 	// 创建渲染目标视图
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtv_heap_handle(mRtvHeap->GetCPUDescriptorHandleForHeapStart());
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(mRtvHeap->GetCPUDescriptorHandleForHeapStart());
 	for (UINT i = 0; i < SwapChainBufferCount; i++)
 	{
 		ThrowIfFailed(mSwapChain->GetBuffer(i, IID_PPV_ARGS(mSwapChainBuffer[i].GetAddressOf())));
-		mD3D12Device->CreateRenderTargetView(mSwapChainBuffer[i].Get(), nullptr, rtv_heap_handle);
-		rtv_heap_handle.Offset(1, mRtvDescriptorSize);
+		mD3D12Device->CreateRenderTargetView(mSwapChainBuffer[i].Get(), nullptr, rtvHeapHandle);
+		rtvHeapHandle.Offset(1, mRtvDescriptorSize);
 	}
 
 	// 创建深度/模板缓冲区及其视图
@@ -418,17 +418,17 @@ void D3D12App::CreateRenderResource()
 	depth_stencil_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
 	depth_stencil_desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
-	D3D12_CLEAR_VALUE opt_clear;
-	opt_clear.Format = mDepthStencilFormat;
-	opt_clear.DepthStencil.Depth = 1.0f;
-	opt_clear.DepthStencil.Stencil = 0;
+	D3D12_CLEAR_VALUE optClear;
+	optClear.Format = mDepthStencilFormat;
+	optClear.DepthStencil.Depth = 1.0f;
+	optClear.DepthStencil.Stencil = 0;
 
 	ThrowIfFailed(mD3D12Device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 		D3D12_HEAP_FLAG_NONE,
 		&depth_stencil_desc,
 		D3D12_RESOURCE_STATE_COMMON,
-		&opt_clear,
+		&optClear,
 		IID_PPV_ARGS(mDepthStencilBuffer.GetAddressOf())
 	));
 	mD3D12Device->CreateDepthStencilView(mDepthStencilBuffer.Get(), nullptr, DepthStencilView());

@@ -11,7 +11,7 @@ public:
 
 	~D3D12App();
 
-	void Initialize(HWND hwnd, int clientWidth, int clientHeight);
+	virtual void Initialize(HWND hwnd, int clientWidth, int clientHeight);
 
 	static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 

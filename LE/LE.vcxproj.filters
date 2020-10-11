@@ -41,6 +41,15 @@
     <ClInclude Include="PrimitiveTypes.h">
       <Filter>Common</Filter>
     </ClInclude>
+    <ClInclude Include="Demo.h">
+      <Filter>App</Filter>
+    </ClInclude>
+    <ClInclude Include="MeshGeometry.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="UploadBuffer.h">
+      <Filter>Common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Main.cpp">
@@ -57,6 +66,9 @@
     </ClCompile>
     <ClCompile Include="GameTimer.cpp">
       <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="Demo.cpp">
+      <Filter>App</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
