@@ -1,3 +1,4 @@
+#include <WindowsX.h>
 #include "D3D12App.h"
 #include "GameTimer.h"
 
@@ -142,15 +143,15 @@ LRESULT D3D12App::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_LBUTTONDOWN:
 	case WM_MBUTTONDOWN:
 	case WM_RBUTTONDOWN:
-		//OnMouseDown(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		OnMouseDown(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 		return 0;
 	case WM_LBUTTONUP:
 	case WM_MBUTTONUP:
 	case WM_RBUTTONUP:
-		//OnMouseUp(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		OnMouseUp(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 		return 0;
 	case WM_MOUSEMOVE:
-		//OnMouseMove(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+		OnMouseMove(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 		return 0;
 	case WM_SYSCOMMAND:
 		if ((wParam & 0xfff0) == SC_KEYMENU) // Disable ALT application menu
@@ -241,10 +242,6 @@ void D3D12App::CreateD3D12Device()
 	// 创建围栏并获取资源描述符大小
 	ThrowIfFailed(mD3D12Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(mFence.GetAddressOf())));
 
-	mRtvDescriptorSize = mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-	mDsvDescriptorSize = mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
-	mCbvDescriptorSize = mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
 	// 检查多重采样质量级别
 	D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS qualityLevel;
 	qualityLevel.Format = mDXGIFormat;
@@ -267,14 +264,12 @@ ID3D12Resource* D3D12App::CurrentBackBuffer() const
 
 D3D12_CPU_DESCRIPTOR_HANDLE D3D12App::CurrentBackBufferView() const
 {
-	return CD3DX12_CPU_DESCRIPTOR_HANDLE(mRtvHeap->GetCPUDescriptorHandleForHeapStart(),
-		mCurrentBackBuffer,
-		mRtvDescriptorSize);
+	return mRtvHeap->hCPU(mCurrentBackBuffer);
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE D3D12App::DepthStencilView() const
 {
-	return mDsvHeap->GetCPUDescriptorHandleForHeapStart();
+	return mDsvHeap->pDH->GetCPUDescriptorHandleForHeapStart();
 }
 
 void D3D12App::LogAdapters()
@@ -378,30 +373,23 @@ void D3D12App::CreateSwapChain()
 
 void D3D12App::CreateDescriptorHeap()
 {
-	D3D12_DESCRIPTOR_HEAP_DESC rtvDesc;
-	rtvDesc.NodeMask = 0;
-	rtvDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	rtvDesc.NumDescriptors = SwapChainBufferCount;
-	rtvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-	ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&rtvDesc, IID_PPV_ARGS(mRtvHeap.GetAddressOf())));
+	mRtvHeap = std::make_unique<CDescriptorHeapWrapper>();
+	ThrowIfFailed(mRtvHeap->Create(mD3D12Device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, SwapChainBufferCount, false));
 
-	D3D12_DESCRIPTOR_HEAP_DESC dsvDesc;
-	dsvDesc.NodeMask = 0;
-	dsvDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	dsvDesc.NumDescriptors = 1;
-	dsvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-	ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&dsvDesc, IID_PPV_ARGS(mDsvHeap.GetAddressOf())));
+	mDsvHeap = std::make_unique<CDescriptorHeapWrapper>();
+	ThrowIfFailed(mDsvHeap->Create(mD3D12Device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1, false));
+
 }
 
 void D3D12App::CreateRenderResource()
 {
 	// 创建渲染目标视图
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(mRtvHeap->GetCPUDescriptorHandleForHeapStart());
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(mRtvHeap->pDH->GetCPUDescriptorHandleForHeapStart());
 	for (UINT i = 0; i < SwapChainBufferCount; i++)
 	{
 		ThrowIfFailed(mSwapChain->GetBuffer(i, IID_PPV_ARGS(mSwapChainBuffer[i].GetAddressOf())));
 		mD3D12Device->CreateRenderTargetView(mSwapChainBuffer[i].Get(), nullptr, rtvHeapHandle);
-		rtvHeapHandle.Offset(1, mRtvDescriptorSize);
+		rtvHeapHandle.Offset(1, mRtvHeap->HandleIncrementSize);
 	}
 
 	// 创建深度/模板缓冲区及其视图

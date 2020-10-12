@@ -19,12 +19,15 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="CDescriptorHeapWrapper.h" />
     <ClInclude Include="D3D12App.h" />
     <ClInclude Include="D3D12InputLayouts.h" />
     <ClInclude Include="D3D12Util.h" />
     <ClInclude Include="d3dx12.h" />
     <ClInclude Include="Demo.h" />
+    <ClInclude Include="FrameResource.h" />
     <ClInclude Include="GameTimer.h" />
+    <ClInclude Include="MathHelper.h" />
     <ClInclude Include="MeshGeometry.h" />
     <ClInclude Include="PrimitiveTypes.h" />
     <ClInclude Include="TSingleton.h" />
@@ -35,8 +38,10 @@
     <ClCompile Include="D3D12InputLayouts.cpp" />
     <ClCompile Include="D3D12Util.cpp" />
     <ClCompile Include="Demo.cpp" />
+    <ClCompile Include="FrameResource.cpp" />
     <ClCompile Include="GameTimer.cpp" />
     <ClCompile Include="Main.cpp" />
+    <ClCompile Include="MathHelper.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>

@@ -1,6 +1,7 @@
 #pragma once
 #include "D3D12Util.h"
 #include "TSingleton.h"
+#include "CDescriptorHeapWrapper.h"
 
 using namespace Microsoft::WRL;
 
@@ -25,6 +26,12 @@ protected:
 	virtual void Update() = 0;
 
 	virtual void Draw() = 0;
+
+	virtual void OnMouseDown(WPARAM btnState, int x, int y) { }
+
+	virtual void OnMouseUp(WPARAM btnState, int x, int y) { }
+
+	virtual void OnMouseMove(WPARAM btnState, int x, int y) { }
 
 protected:
 	void InitD3D();
@@ -56,9 +63,6 @@ protected:
 	ComPtr<IDXGIFactory4> mDXGIFactory = nullptr;
 	ComPtr<ID3D12Device> mD3D12Device = nullptr;
 	ComPtr<ID3D12Fence> mFence = nullptr;
-	UINT mRtvDescriptorSize = 0;
-	UINT mDsvDescriptorSize = 0;
-	UINT mCbvDescriptorSize = 0;
 	DXGI_FORMAT mDXGIFormat;
 	bool mEnableMSAA = false;
 	UINT mMSAAQualityLevels = 0;
@@ -71,8 +75,8 @@ protected:
 	HWND mMainWnd;
 	static const int SwapChainBufferCount = 2;
 	int mCurrentBackBuffer = 0;
-	ComPtr<ID3D12DescriptorHeap> mRtvHeap;
-	ComPtr<ID3D12DescriptorHeap> mDsvHeap;
+	std::unique_ptr<CDescriptorHeapWrapper> mRtvHeap;
+	std::unique_ptr<CDescriptorHeapWrapper> mDsvHeap;
 	ComPtr<ID3D12Resource> mSwapChainBuffer[SwapChainBufferCount];
 	DXGI_FORMAT mDepthStencilFormat;
 	ComPtr<ID3D12Resource> mDepthStencilBuffer;
