@@ -45,13 +45,7 @@ class Demo : public D3D12App
 public:
 	void Initialize(HWND hwnd, int clientWidth, int clientHeight) override;
 	
-	void OnResize() override
-	{
-		D3D12App::OnResize();
-		// The window resized, so update the aspect ratio and recompute the projection matrix.
-		XMMATRIX P = XMMatrixPerspectiveFovLH(0.25f * XM_PI, static_cast<float>(mClientWidth) / mClientHeight, 1.0f, 1000.0f);
-		XMStoreFloat4x4(&mProj, P);
-	}
+	void OnResize() override;
 
 	void Update() override;
 	
@@ -133,11 +127,12 @@ private:
 	// Render items divided by PSO.
 	std::vector<RenderItem*> mOpaqueRitems;
 
+	UINT mPassCbvOffset = 0;
 	PassConstants mMainPassCB;
 
 	ComPtr<ID3D12PipelineState> mPSO = nullptr;
 
-	XMFLOAT4X4 mWorld;
+	XMFLOAT3 mEyePos;
 	XMFLOAT4X4 mView;
 	XMFLOAT4X4 mProj;
 

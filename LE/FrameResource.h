@@ -4,7 +4,7 @@
 
 struct ObjectConstants
 {
-    DirectX::XMFLOAT4X4 WorldViewProj;
+    DirectX::XMFLOAT4X4 World;
 };
 
 struct PassConstants
