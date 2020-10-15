@@ -80,6 +80,9 @@
     <ClInclude Include="imgui_impl_dx12.h">
       <Filter>ImGui\Src</Filter>
     </ClInclude>
+    <ClInclude Include="imgui_impl_win32.h">
+      <Filter>ImGui</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Main.cpp">
@@ -120,6 +123,9 @@
     </ClCompile>
     <ClCompile Include="imgui_impl_dx12.cpp">
       <Filter>ImGui\Src</Filter>
+    </ClCompile>
+    <ClCompile Include="imgui_impl_win32.cpp">
+      <Filter>ImGui</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

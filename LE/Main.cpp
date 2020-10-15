@@ -28,7 +28,7 @@ int main(int, char**)
 		}
 
 		// Compute window rectangle dimensions based on requested client area dimensions.
-		RECT R = { 0, 0, 800, 600 };
+		RECT R = { 0, 0, 1280, 800 };
 		AdjustWindowRect(&R, WS_OVERLAPPEDWINDOW, false);
 		int width = R.right - R.left;
 		int height = R.bottom - R.top;

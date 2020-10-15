@@ -2,6 +2,10 @@
 #include "D3D12App.h"
 #include "GameTimer.h"
 
+#include "imgui.h"
+#include "imgui_impl_win32.h"
+#include "imgui_impl_dx12.h"
+
 D3D12App::D3D12App()
 	:
 	mDepthStencilFormat(DXGI_FORMAT_D24_UNORM_S8_UINT),
@@ -26,8 +30,13 @@ void D3D12App::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 	OnResize();
 }
 
+// Forward declare message handler from imgui_impl_win32.cpp
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
 LRESULT D3D12App::MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+	if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam))
+		return true;
 	return D3D12App::GetInstancePtr()->MsgProc(hwnd, msg, wParam, lParam);
 }
 
@@ -175,6 +184,8 @@ void D3D12App::OnResize()
 	assert(mCommandAllocator);
 
 	FlushCommandQueue();
+	// ImGui
+	ImGui_ImplDX12_InvalidateDeviceObjects();
 
 	ThrowIfFailed(mCommandList->Reset(mCommandAllocator.Get(), nullptr));
 	// Release the previous resources we will be recreating.
@@ -191,6 +202,8 @@ void D3D12App::OnResize()
 
 	mCurrentBackBuffer = 0;
 	CreateRenderResource();
+	// ImGui
+	ImGui_ImplDX12_CreateDeviceObjects();
 }
 
 void D3D12App::InitD3D()
@@ -379,6 +392,12 @@ void D3D12App::CreateDescriptorHeap()
 	mDsvHeap = std::make_unique<CDescriptorHeapWrapper>();
 	ThrowIfFailed(mDsvHeap->Create(mD3D12Device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1, false));
 
+	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc;
+	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	srvHeapDesc.NodeMask = 0;
+	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	srvHeapDesc.NumDescriptors = 1;
+	ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(mSrvHeap.GetAddressOf())));
 }
 
 void D3D12App::CreateRenderResource()
