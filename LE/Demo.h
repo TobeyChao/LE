@@ -1,5 +1,4 @@
 #include "D3D12App.h"
-#include "UploadBuffer.h"
 #include "MathHelper.h"
 #include "FrameResource.h"
 #include "GameTimer.h"
