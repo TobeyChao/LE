@@ -3,6 +3,11 @@
 #include "TSingleton.h"
 #include "CDescriptorHeapWrapper.h"
 
+#pragma comment(lib, "dxguid.lib")
+#pragma comment(lib, "d3d12.lib")
+#pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "d3dcompiler.lib")
+
 using namespace Microsoft::WRL;
 
 class D3D12App : public TSingleton<D3D12App>
