@@ -4,9 +4,13 @@
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx12.h"
 
-bool show_demo_window = true;
+#include "GeometryGenerator.h"
+
+bool show_demo_window = false;
 bool show_another_window = false;
+bool show_wireframe = false;
 ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+ImFont* font;
 
 Demo::~Demo()
 {
@@ -45,13 +49,16 @@ void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 	// - The fonts will be rasterized at a given size (w/ oversampling) and stored into a texture when calling ImFontAtlas::Build()/GetTexDataAsXXXX(), which ImGui_ImplXXXX_NewFrame below will call.
 	// - Read 'docs/FONTS.md' for more instructions and details.
 	// - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
-	//io.Fonts->AddFontDefault();
+	io.Fonts->AddFontDefault();
 	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/Roboto-Medium.ttf", 16.0f);
 	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
 	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf", 16.0f);
 	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/ProggyTiny.ttf", 10.0f);
 	//ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, NULL, io.Fonts->GetGlyphRangesJapanese());
 	//IM_ASSERT(font != NULL);
+
+	font = io.Fonts->AddFontFromFileTTF("Fonts\\Zpix.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
+	IM_ASSERT(font != NULL);
 
 	mEyePos = { 0.0f, 0.0f, 0.0f };
 	XMStoreFloat4x4(&mView, XMMatrixIdentity());
@@ -177,12 +184,13 @@ void Demo::Draw()
 		static float f = 0.0f;
 		static int counter = 0;
 
-		ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
-
-		ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
+		ImGui::Begin("Control Board");                          // Create a window called "Hello, world!" and append into it.
+		ImGui::PushFont(font);
+		ImGui::Text(u8"Display some ÖÐÎÄ.");						// Display some text (you can use a format strings too)
+		ImGui::PopFont();
 		ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
 		ImGui::Checkbox("Another Window", &show_another_window);
-
+		ImGui::Checkbox("Wire Frame Mode", &show_wireframe);
 		ImGui::SliderFloat("Theta", &mTheta, 0.0f, XM_PI);		// Edit 1 float using a slider from 0.0f to XM_PI
 		ImGui::SliderFloat("Phi", &mPhi, 0.1f, XM_PI - 0.1f);	// Edit 1 float using a slider from 0.0f to XM_PI - 0.1f
 		ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
@@ -214,7 +222,7 @@ void Demo::Draw()
 
 	// A command list can be reset after it has been added to the command queue via ExecuteCommandList.
 	// Reusing the command list reuses memory.
-	ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSO.Get()));
+	ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), show_wireframe ? mPSOs["opaque_wireframe"].Get() : mPSOs["opaque_solid"].Get()));
 
 	mCommandList->RSSetViewports(1, &mScreenViewport);
 	mCommandList->RSSetScissorRects(1, &mScissorRect);
@@ -485,6 +493,9 @@ void Demo::BuildBoxGeometry()
 		4, 3, 7
 	};
 
+	GeometryGenerator geoGen;
+	GeometryGenerator::MeshData box = geoGen.CreateBox(1.0f, 1.0f, 1.0f, 3);
+
 	const UINT vbByteSize = (UINT)vertices.size() * sizeof(PrimitiveTypes::PosColVertex);
 	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
 
@@ -570,7 +581,16 @@ void Demo::BuildPSO()
 	psoDesc.SampleDesc.Count = mEnableMSAA ? 4 : 1;
 	psoDesc.SampleDesc.Quality = mEnableMSAA ? (mMSAAQualityLevels - 1) : 0;
 	psoDesc.DSVFormat = mDepthStencilFormat;
-	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSO)));
+	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSOs["opaque_solid"])));
+
+	//
+	// PSO for opaque wireframe objects.
+	//
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC opaqueWireframePsoDesc = psoDesc;
+	opaqueWireframePsoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
+	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&opaqueWireframePsoDesc, IID_PPV_ARGS(&mPSOs["opaque_wireframe"])));
+
 }
 
 void Demo::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)

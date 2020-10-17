@@ -101,7 +101,7 @@ private:
 	UINT mPassCbvOffset = 0;
 	PassConstants mMainPassCB;
 
-	ComPtr<ID3D12PipelineState> mPSO = nullptr;
+	std::unordered_map<std::string, ComPtr<ID3D12PipelineState>> mPSOs;
 
 	XMFLOAT3 mEyePos;
 	XMFLOAT4X4 mView;

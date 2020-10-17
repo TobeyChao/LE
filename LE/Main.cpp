@@ -63,7 +63,7 @@ int main(int, char**)
 
 			if (!app->IsPaused())
 			{
-				app->CalculateFrameStats();
+				// app->CalculateFrameStats();
 				app->Update();
 				app->Draw();
 			}
