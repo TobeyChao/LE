@@ -3,6 +3,7 @@
 #include "FrameResource.h"
 #include "GameTimer.h"
 #include "PrimitiveTypes.h"
+#include "D3D12InputLayouts.h"
 #include "MeshGeometry.h"
 #include <DirectXColors.h>
 

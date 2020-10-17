@@ -445,58 +445,36 @@ void Demo::BuildShadersAndInputLayout()
 	mShaders["standardVS"] = D3D12Util::CompileShader(L"Shaders\\Color.hlsl", nullptr, "VS", "vs_5_0");
 	mShaders["opaquePS"] = D3D12Util::CompileShader(L"Shaders\\Color.hlsl", nullptr, "PS", "ps_5_0");
 
-	mInputLayout =
-	{
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
-	};
+	mInputLayout.clear();
+	mInputLayout.insert(mInputLayout.end(), std::begin(InputLayouts::inputLayoutPosNorCol), std::end(InputLayouts::inputLayoutPosNorCol));
+	//{
+	//	{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	//	{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+	//};
 }
 
 void Demo::BuildBoxGeometry()
 {
-	std::array<PrimitiveTypes::PosColVertex, 8> vertices =
-	{
-		PrimitiveTypes::PosColVertex({ XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT4(Colors::White) }),
-		PrimitiveTypes::PosColVertex({ XMFLOAT3(-1.0f, +1.0f, -1.0f), XMFLOAT4(Colors::Black) }),
-		PrimitiveTypes::PosColVertex({ XMFLOAT3(+1.0f, +1.0f, -1.0f), XMFLOAT4(Colors::Red) }),
-		PrimitiveTypes::PosColVertex({ XMFLOAT3(+1.0f, -1.0f, -1.0f), XMFLOAT4(Colors::Green) }),
-		PrimitiveTypes::PosColVertex({ XMFLOAT3(-1.0f, -1.0f, +1.0f), XMFLOAT4(Colors::Blue) }),
-		PrimitiveTypes::PosColVertex({ XMFLOAT3(-1.0f, +1.0f, +1.0f), XMFLOAT4(Colors::Yellow) }),
-		PrimitiveTypes::PosColVertex({ XMFLOAT3(+1.0f, +1.0f, +1.0f), XMFLOAT4(Colors::Cyan) }),
-		PrimitiveTypes::PosColVertex({ XMFLOAT3(+1.0f, -1.0f, +1.0f), XMFLOAT4(Colors::Magenta) })
-	};
-
-	std::array<std::uint16_t, 36> indices =
-	{
-		// front face
-		0, 1, 2,
-		0, 2, 3,
-
-		// back face
-		4, 6, 5,
-		4, 7, 6,
-
-		// left face
-		4, 5, 1,
-		4, 1, 0,
-
-		// right face
-		3, 2, 6,
-		3, 6, 7,
-
-		// top face
-		1, 5, 6,
-		1, 6, 2,
-
-		// bottom face
-		4, 0, 3,
-		4, 3, 7
-	};
-
 	GeometryGenerator geoGen;
-	GeometryGenerator::MeshData box = geoGen.CreateBox(1.0f, 1.0f, 1.0f, 3);
+	GeometryGenerator::MeshData model = geoGen.CreateGeosphere(1.0f, 3);
+	//GeometryGenerator::MeshData model = geoGen.CreateCylinder(1.0f, 1.0f, 1.0f, 30, 1);
+	//GeometryGenerator::MeshData model = geoGen.CreateBox(1.0f, 1.0f, 1.0f, 0);
+	//GeometryGenerator::MeshData model = geoGen.CreateSphere(1.0f, 20, 20);
+	//GeometryGenerator::MeshData model = geoGen.CreateGrid(1.0f, 1.0f, 2, 2);
 
-	const UINT vbByteSize = (UINT)vertices.size() * sizeof(PrimitiveTypes::PosColVertex);
+	std::vector<PrimitiveTypes::PosNorColVertex> vertices(model.Vertices.size());
+
+	for (size_t i = 0; i < model.Vertices.size(); ++i)
+	{
+		vertices[i].Position = model.Vertices[i].Position;
+		vertices[i].Normal = model.Vertices[i].Normal;
+		vertices[i].Color = XMFLOAT4(DirectX::Colors::DarkGreen);
+	}
+
+	std::vector<std::uint16_t> indices;
+	indices.insert(indices.end(), std::begin(model.GetIndices16()), std::end(model.GetIndices16()));
+
+	const UINT vbByteSize = (UINT)vertices.size() * sizeof(PrimitiveTypes::PosNorColVertex);
 	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
 
 	auto boxGeo = std::make_unique<MeshGeometry>();
@@ -514,7 +492,7 @@ void Demo::BuildBoxGeometry()
 	boxGeo->IndexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
 		mCommandList.Get(), indices.data(), ibByteSize, boxGeo->IndexBufferUploader);
 
-	boxGeo->VertexByteStride = sizeof(PrimitiveTypes::PosColVertex);
+	boxGeo->VertexByteStride = sizeof(PrimitiveTypes::PosNorColVertex);
 	boxGeo->VertexBufferByteSize = vbByteSize;
 	boxGeo->IndexFormat = DXGI_FORMAT_R16_UINT;
 	boxGeo->IndexBufferByteSize = ibByteSize;

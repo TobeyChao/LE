@@ -24,6 +24,7 @@ cbuffer cbPass : register(b1)
 struct VertexIn
 {
     float3 PosL : POSITION;
+    float3 normal : Normal;
     float4 Color : COLOR0;
 };
             
@@ -38,7 +39,7 @@ VertexOut VS(VertexIn vertIn)
     VertexOut vertOut;
     float4 posW = mul(float4(vertIn.PosL, 1.0f), gWorld);
     vertOut.PosH = mul(posW, gViewProj);
-    vertOut.Color = vertIn.Color;
+    vertOut.Color = float4(vertIn.normal * 0.5f + float3(0.5f, 0.5f, 0.5f), 1.0f);
     return vertOut;
 }
 

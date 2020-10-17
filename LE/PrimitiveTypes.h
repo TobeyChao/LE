@@ -154,12 +154,12 @@ public:
 			float r, float g, float b, float a)
 			:
 			Position(x, y, z),
-			normal(nx, ny, nz),
-			color(r, g, b, a)
+			Normal(nx, ny, nz),
+			Color(r, g, b, a)
 		{}
 		DirectX::XMFLOAT3 Position;
-		DirectX::XMFLOAT3 normal;
-		DirectX::XMFLOAT4 color;
+		DirectX::XMFLOAT3 Normal;
+		DirectX::XMFLOAT4 Color;
 		static const bool hasPos = true;
 		static const bool hasTex = false;
 		static const bool hasNor = true;
