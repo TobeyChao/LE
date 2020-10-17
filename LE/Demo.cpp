@@ -9,7 +9,7 @@
 bool show_demo_window = false;
 bool show_another_window = false;
 bool show_wireframe = false;
-ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+ImVec4 clear_color = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
 ImFont* font;
 
 Demo::~Demo()
@@ -302,7 +302,7 @@ void Demo::OnMouseMove(WPARAM btnState, int x, int y)
 		mRadius += dx - dy;
 
 		// Restrict the radius.
-		mRadius = MathHelper::Clamp(mRadius, 3.0f, 15.0f);
+		mRadius = MathHelper::Clamp(mRadius, 3.0f, 150.0f);
 	}
 
 	mLastMousePos.x = x;
@@ -456,18 +456,18 @@ void Demo::BuildShadersAndInputLayout()
 void Demo::BuildBoxGeometry()
 {
 	GeometryGenerator geoGen;
-	GeometryGenerator::MeshData model = geoGen.CreateGeosphere(1.0f, 3);
+	//GeometryGenerator::MeshData model = geoGen.CreateGeosphere(1.0f, 3);
 	//GeometryGenerator::MeshData model = geoGen.CreateCylinder(1.0f, 1.0f, 1.0f, 30, 1);
 	//GeometryGenerator::MeshData model = geoGen.CreateBox(1.0f, 1.0f, 1.0f, 0);
 	//GeometryGenerator::MeshData model = geoGen.CreateSphere(1.0f, 20, 20);
-	//GeometryGenerator::MeshData model = geoGen.CreateGrid(1.0f, 1.0f, 2, 2);
+	GeometryGenerator::MeshData model = geoGen.CreateGrid(160.0f, 160.0f, 50, 50);
 
 	std::vector<PrimitiveTypes::PosNorColVertex> vertices(model.Vertices.size());
 
 	for (size_t i = 0; i < model.Vertices.size(); ++i)
 	{
-		vertices[i].Position = model.Vertices[i].Position;
-		vertices[i].Normal = model.Vertices[i].Normal;
+		vertices[i].Position = { model.Vertices[i].Position.x, GetHillsHeight(model.Vertices[i].Position.x, model.Vertices[i].Position.z), model.Vertices[i].Position.z };
+		vertices[i].Normal = GetHillsNormal(model.Vertices[i].Position.x, model.Vertices[i].Position.z);
 		vertices[i].Color = XMFLOAT4(DirectX::Colors::DarkGreen);
 	}
 
