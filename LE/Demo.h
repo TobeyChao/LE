@@ -10,8 +10,6 @@
 
 using namespace DirectX;
 
-const int gNumFrameResources = 3;
-
 struct RenderItem
 {
 	RenderItem() = default;
@@ -30,6 +28,7 @@ struct RenderItem
 	// Index into GPU constant buffer corresponding to the ObjectCB for this render item.
 	UINT ObjCBIndex = -1;
 
+	Material* Mat = nullptr;
 	MeshGeometry* Geo = nullptr;
 
 	// Primitive topology.
@@ -78,10 +77,12 @@ public:
 	void UpdateCamera();
 	void UpdateObjectCBs();
 	void UpdateMainPassCB();
+	void UpdateMaterialCB();
 	void UpdateWaves();
 
 	void CalculateFrameStats();
 
+	void BuildMaterials();
 	void BuildRootSignature();
 	void BuildShadersAndInputLayout();
 	void BuildLandGeometry();
@@ -124,13 +125,13 @@ private:
 
 	std::unordered_map<std::string, std::unique_ptr<MeshGeometry>> mGeometries;
 
+	std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
+
 	std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
 
 	RenderItem* mWavesRitem = nullptr;
-
 	// List of all the render items.
 	std::vector<std::unique_ptr<RenderItem>> mAllRitems;
-
 	// Render items divided by PSO.
 	std::vector<RenderItem*> mRitemLayer[(int)RenderLayer::Count];
 
@@ -148,6 +149,9 @@ private:
 	float mTheta = XM_PI;
 	float mPhi = XM_PIDIV4;
 	float mRadius = 100.0f;
+
+	float mSunTheta = 1.25f * XM_PI;
+	float mSunPhi = XM_PIDIV4;
 
 	POINT mLastMousePos;
 };

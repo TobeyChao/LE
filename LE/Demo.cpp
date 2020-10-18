@@ -68,6 +68,7 @@ void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 	ThrowIfFailed(mCommandList->Reset(mCommandAllocator.Get(), nullptr));
 
 	// 自定义初始化
+	BuildMaterials();
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
 	BuildLandGeometry();
@@ -115,6 +116,7 @@ void Demo::Update()
 	UpdateObjectCBs();
 	UpdateMainPassCB();
 	UpdateWaves();
+	UpdateMaterialCB();
 }
 
 void Demo::Draw()
@@ -196,7 +198,7 @@ void Demo::Draw()
 	//auto passCbvHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
 	//passCbvHandle.Offset(passCbvIndex, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 	//mCommandList->SetGraphicsRootDescriptorTable(1, passCbvHandle);
-	mCommandList->SetGraphicsRootConstantBufferView(1, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootConstantBufferView(2, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
 
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque]);
 
@@ -322,8 +324,37 @@ void Demo::UpdateMainPassCB()
 	mMainPassCB.FarZ = 1000.0f;
 	mMainPassCB.TotalTime = GameTimer::GetInstancePtr()->TotalTime();
 	mMainPassCB.DeltaTime = GameTimer::GetInstancePtr()->DeltaTime();
+	mMainPassCB.AmbientLight = { 0.25f, 0.25f, 0.35f, 1.0f };
+
+	XMVECTOR lightDir = -MathHelper::SphericalToCartesian(1.0f, mSunTheta, mSunPhi);
+
+	XMStoreFloat3(&mMainPassCB.Lights[0].Direction, lightDir);
+	mMainPassCB.Lights[0].Strength = { 1.0f, 1.0f, 0.9f };
 
 	currPassCB->CopyData(0, mMainPassCB);
+}
+
+void Demo::UpdateMaterialCB()
+{
+	auto materialCB = mCurrFrameResource->MaterialCB.get();
+	for (auto& e : mMaterials)
+	{
+		auto mat = e.second.get();
+		if (mat->NumFramesDirty > 0)
+		{
+			//XMMATRIX matTransform = XMLoadFloat4x4(&mat->MatTransform);
+
+			MaterialConstants materialConstants;
+			materialConstants.DiffuseAlbedo = mat->DiffuseAlbedo;
+			materialConstants.FresnelR0 = mat->FresnelR0;
+			materialConstants.Roughness = mat->Roughness;
+
+			materialCB->CopyData(mat->MatCBIndex, materialConstants);
+
+			// Next FrameResource need to be updated too.
+			mat->NumFramesDirty--;
+		}
+	}
 }
 
 void Demo::UpdateWaves()
@@ -392,71 +423,24 @@ void Demo::CalculateFrameStats()
 	}
 }
 
-void Demo::BuildDescriptorHeaps()
+void Demo::BuildMaterials()
 {
-	UINT objCount = (UINT)mRitemLayer[(int)RenderLayer::Opaque].size();
+	auto grass = std::make_unique<Material>();
+	grass->Name = "grass";
+	grass->MatCBIndex = 0;
+	grass->DiffuseAlbedo = XMFLOAT4{ 0.2f, 0.6f, 0.2f, 1.0f };
+	grass->FresnelR0 = XMFLOAT3{ 0.01f, 0.01f, 0.01f };
+	grass->Roughness = 0.125f;
 
-	// Need a CBV descriptor for each object for each frame resource,
-	// +1 for the perPass CBV for each frame resource.
-	UINT numDescriptors = (objCount + 1) * gNumFrameResources;
-	mPassCbvOffset = objCount * gNumFrameResources;
+	auto water = std::make_unique<Material>();
+	water->Name = "water";
+	water->MatCBIndex = 1;
+	water->DiffuseAlbedo = XMFLOAT4{ 0.0f, 0.2f, 0.6f, 1.0f };
+	water->FresnelR0 = XMFLOAT3{ 0.1f, 0.1f, 0.1f };
+	water->Roughness = 0.0f;
 
-	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
-	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	cbvHeapDesc.NodeMask = 0;
-	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	cbvHeapDesc.NumDescriptors = numDescriptors;
-	ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(mCbvHeap.GetAddressOf())));
-}
-
-void Demo::BuildConstantBufferViews()
-{
-	UINT objCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(ObjectConstants));
-
-	UINT objCount = (UINT)mRitemLayer[(int)RenderLayer::Opaque].size();
-	// Need a CBV descriptor for each object for each frame resource.
-	for (int frameIndex = 0; frameIndex < gNumFrameResources; ++frameIndex)
-	{
-		auto objectCB = mFrameResources[frameIndex]->ObjectCB->Resource();
-		for (UINT i = 0; i < objCount; ++i)
-		{
-			D3D12_GPU_VIRTUAL_ADDRESS cbAddress = objectCB->GetGPUVirtualAddress();
-
-			// Offset to the ith object constant buffer in the buffer.
-			cbAddress += i * objCBByteSize;
-
-			// Offset to the object cbv in the descriptor heap.
-			int heapIndex = frameIndex * objCount + i;
-			auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
-			handle.Offset(heapIndex, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-
-			D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
-			cbvDesc.BufferLocation = cbAddress;
-			cbvDesc.SizeInBytes = objCBByteSize;
-
-			mD3D12Device->CreateConstantBufferView(&cbvDesc, handle);
-		}
-	}
-
-	UINT passCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(PassConstants));
-
-	for (int frameIndex = 0; frameIndex < gNumFrameResources; ++frameIndex)
-	{
-		auto passCB = mFrameResources[frameIndex]->PassCB->Resource();
-
-		auto address = passCB->GetGPUVirtualAddress();
-
-		// Offset to the object cbv in the descriptor heap.
-		int heapIndex = mPassCbvOffset + frameIndex;
-		auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
-		handle.Offset(heapIndex, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-
-		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
-		cbvDesc.BufferLocation = address;
-		cbvDesc.SizeInBytes = passCBByteSize;
-
-		mD3D12Device->CreateConstantBufferView(&cbvDesc, handle);
-	}
+	mMaterials["grass"] = std::move(grass);
+	mMaterials["water"] = std::move(water);
 }
 
 void Demo::BuildRootSignature()
@@ -468,11 +452,12 @@ void Demo::BuildRootSignature()
 	CD3DX12_DESCRIPTOR_RANGE cbvTable2;
 	cbvTable2.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1);
 
-	CD3DX12_ROOT_PARAMETER slotRootParameter[2];
+	CD3DX12_ROOT_PARAMETER slotRootParameter[3];
 	slotRootParameter[0].InitAsDescriptorTable(1, &cbvTable1);
 	//slotRootParameter[1].InitAsDescriptorTable(1, &cbvTable2);
 	slotRootParameter[1].InitAsConstantBufferView(1);
-	CD3DX12_ROOT_SIGNATURE_DESC rootSignDesc(2, slotRootParameter, 0, nullptr,
+	slotRootParameter[2].InitAsConstantBufferView(2);
+	CD3DX12_ROOT_SIGNATURE_DESC rootSignDesc(3, slotRootParameter, 0, nullptr,
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 	ComPtr<ID3DBlob> serializedRootSign = nullptr;
@@ -622,7 +607,74 @@ void Demo::BuildFrameResources()
 	for (int i = 0; i < gNumFrameResources; ++i)
 	{
 		mFrameResources.push_back(std::make_unique<FrameResource>(mD3D12Device.Get(),
-			1, (UINT)mAllRitems.size(), mWaves->VertexCount()));
+			1, (UINT)mAllRitems.size(), mWaves->VertexCount(), (UINT)mMaterials.size()));
+	}
+}
+
+void Demo::BuildDescriptorHeaps()
+{
+	UINT objCount = (UINT)mRitemLayer[(int)RenderLayer::Opaque].size();
+
+	// Need a CBV descriptor for each object for each frame resource,
+	// +1 for the perPass CBV for each frame resource.
+	UINT numDescriptors = (objCount + 1) * gNumFrameResources;
+	mPassCbvOffset = objCount * gNumFrameResources;
+
+	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
+	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	cbvHeapDesc.NodeMask = 0;
+	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	cbvHeapDesc.NumDescriptors = numDescriptors;
+	ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(mCbvHeap.GetAddressOf())));
+}
+
+void Demo::BuildConstantBufferViews()
+{
+	UINT objCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(ObjectConstants));
+
+	UINT objCount = (UINT)mRitemLayer[(int)RenderLayer::Opaque].size();
+	// Need a CBV descriptor for each object for each frame resource.
+	for (int frameIndex = 0; frameIndex < gNumFrameResources; ++frameIndex)
+	{
+		auto objectCB = mFrameResources[frameIndex]->ObjectCB->Resource();
+		for (UINT i = 0; i < objCount; ++i)
+		{
+			D3D12_GPU_VIRTUAL_ADDRESS cbAddress = objectCB->GetGPUVirtualAddress();
+
+			// Offset to the ith object constant buffer in the buffer.
+			cbAddress += i * objCBByteSize;
+
+			// Offset to the object cbv in the descriptor heap.
+			int heapIndex = frameIndex * objCount + i;
+			auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
+			handle.Offset(heapIndex, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+
+			D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
+			cbvDesc.BufferLocation = cbAddress;
+			cbvDesc.SizeInBytes = objCBByteSize;
+
+			mD3D12Device->CreateConstantBufferView(&cbvDesc, handle);
+		}
+	}
+
+	UINT passCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(PassConstants));
+
+	for (int frameIndex = 0; frameIndex < gNumFrameResources; ++frameIndex)
+	{
+		auto passCB = mFrameResources[frameIndex]->PassCB->Resource();
+
+		auto address = passCB->GetGPUVirtualAddress();
+
+		// Offset to the object cbv in the descriptor heap.
+		int heapIndex = mPassCbvOffset + frameIndex;
+		auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
+		handle.Offset(heapIndex, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+
+		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
+		cbvDesc.BufferLocation = address;
+		cbvDesc.SizeInBytes = passCBByteSize;
+
+		mD3D12Device->CreateConstantBufferView(&cbvDesc, handle);
 	}
 }
 
@@ -631,6 +683,7 @@ void Demo::BuildRenderItems()
 	auto wavesRitem = std::make_unique<RenderItem>();
 	wavesRitem->World = MathHelper::Identity4x4();
 	wavesRitem->ObjCBIndex = 0;
+	wavesRitem->Mat = mMaterials["water"].get();
 	wavesRitem->Geo = mGeometries["waterGeo"].get();
 	wavesRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	wavesRitem->IndexCount = wavesRitem->Geo->DrawArgs["grid"].IndexCount;
@@ -642,6 +695,7 @@ void Demo::BuildRenderItems()
 
 	auto boxRitem = std::make_unique<RenderItem>();
 	boxRitem->ObjCBIndex = 1;
+	boxRitem->Mat = mMaterials["grass"].get();
 	boxRitem->Geo = mGeometries["boxGeo"].get();
 	boxRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	boxRitem->IndexCount = boxRitem->Geo->DrawArgs["box"].IndexCount;
@@ -695,6 +749,8 @@ void Demo::BuildPSO()
 
 void Demo::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)
 {
+	auto matCB = mCurrFrameResource->MaterialCB->Resource();
+	UINT matCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(MaterialConstants));
 	// For each render item...
 	for (size_t i = 0; i < ritems.size(); ++i)
 	{
@@ -710,6 +766,9 @@ void Demo::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector
 		cbvHandle.Offset(cbvIndex, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
 		cmdList->SetGraphicsRootDescriptorTable(0, cbvHandle);
+
+		D3D12_GPU_VIRTUAL_ADDRESS matAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
+		cmdList->SetGraphicsRootConstantBufferView(1, matAddress);
 
 		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
 	}
