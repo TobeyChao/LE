@@ -53,9 +53,6 @@
     <ClInclude Include="CDescriptorHeapWrapper.h">
       <Filter>Common</Filter>
     </ClInclude>
-    <ClInclude Include="FrameResource.h">
-      <Filter>Common</Filter>
-    </ClInclude>
     <ClInclude Include="MathHelper.h">
       <Filter>Common</Filter>
     </ClInclude>
@@ -86,6 +83,12 @@
     <ClInclude Include="GeometryGenerator.h">
       <Filter>Common</Filter>
     </ClInclude>
+    <ClInclude Include="FrameResource.h">
+      <Filter>App</Filter>
+    </ClInclude>
+    <ClInclude Include="Waves.h">
+      <Filter>App</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Main.cpp">
@@ -105,9 +108,6 @@
     </ClCompile>
     <ClCompile Include="Demo.cpp">
       <Filter>App</Filter>
-    </ClCompile>
-    <ClCompile Include="FrameResource.cpp">
-      <Filter>Common</Filter>
     </ClCompile>
     <ClCompile Include="MathHelper.cpp">
       <Filter>Common</Filter>
@@ -132,6 +132,12 @@
     </ClCompile>
     <ClCompile Include="GeometryGenerator.cpp">
       <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="FrameResource.cpp">
+      <Filter>App</Filter>
+    </ClCompile>
+    <ClCompile Include="Waves.cpp">
+      <Filter>App</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

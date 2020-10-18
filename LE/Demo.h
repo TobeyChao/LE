@@ -5,6 +5,7 @@
 #include "PrimitiveTypes.h"
 #include "D3D12InputLayouts.h"
 #include "MeshGeometry.h"
+#include "Waves.h"
 #include <DirectXColors.h>
 
 using namespace DirectX;
@@ -40,19 +41,25 @@ struct RenderItem
 	int BaseVertexLocation = 0;
 };
 
+enum class RenderLayer : int
+{
+	Opaque = 0,
+	Count
+};
+
 class Demo : public D3D12App
 {
 public:
 	~Demo();
 
 	void Initialize(HWND hwnd, int clientWidth, int clientHeight) override;
-	
+
 	void OnResize() override;
 
 	void Update() override;
-	
+
 	void Draw() override;
-	
+
 	void OnMouseDown(WPARAM btnState, int x, int y)
 	{
 		mLastMousePos.x = x;
@@ -60,23 +67,29 @@ public:
 
 		SetCapture(mMainWnd);
 	}
-	
+
 	void OnMouseUp(WPARAM btnState, int x, int y)
 	{
 		ReleaseCapture();
 	}
-	
+
 	void OnMouseMove(WPARAM btnState, int x, int y) override;
-	
+
+	void UpdateCamera();
+	void UpdateObjectCBs();
+	void UpdateMainPassCB();
+	void UpdateWaves();
+
 	void CalculateFrameStats();
-	
+
 	void BuildRootSignature();
 	void BuildShadersAndInputLayout();
-	void BuildBoxGeometry();
+	void BuildLandGeometry();
+	void BuildWaterGeometry();
 	void BuildRenderItems();
 	void BuildFrameResources();
 	void BuildDescriptorHeaps();
-	void BuildConstantBuffers();
+	void BuildConstantBufferViews();
 	void BuildPSO();
 
 	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);
@@ -112,11 +125,16 @@ private:
 	std::unordered_map<std::string, std::unique_ptr<MeshGeometry>> mGeometries;
 
 	std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
+
+	RenderItem* mWavesRitem = nullptr;
+
 	// List of all the render items.
 	std::vector<std::unique_ptr<RenderItem>> mAllRitems;
 
 	// Render items divided by PSO.
-	std::vector<RenderItem*> mOpaqueRitems;
+	std::vector<RenderItem*> mRitemLayer[(int)RenderLayer::Count];
+
+	std::unique_ptr<Waves> mWaves;
 
 	UINT mPassCbvOffset = 0;
 	PassConstants mMainPassCB;

@@ -23,6 +23,7 @@ void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 {
 	D3D12App::Initialize(hwnd, clientWidth, clientHeight);
 
+	mWaves = std::make_unique<Waves>(128, 128, 1.0f, 0.03f, 4.0f, 0.2f);
 
 	// Setup Dear ImGui context
 	IMGUI_CHECKVERSION();
@@ -69,11 +70,12 @@ void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 	// 自定义初始化
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
-	BuildBoxGeometry();
+	BuildLandGeometry();
+	BuildWaterGeometry();
 	BuildRenderItems();
 	BuildFrameResources();
 	BuildDescriptorHeaps();
-	BuildConstantBuffers();
+	BuildConstantBufferViews();
 	BuildPSO();
 
 	// Execute the initialization commands.
@@ -95,19 +97,7 @@ void Demo::OnResize()
 
 void Demo::Update()
 {
-	// Convert Spherical to Cartesian coordinates.
-	mEyePos.x = mRadius * sinf(mPhi) * cosf(mTheta);
-	mEyePos.z = mRadius * sinf(mPhi) * sinf(mTheta);
-	mEyePos.y = mRadius * cosf(mPhi);
-
-	// Build the view matrix.
-	XMVECTOR pos = XMVectorSet(mEyePos.x, mEyePos.y, mEyePos.z, 1.0f);
-	XMVECTOR target = XMVectorZero();
-	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-
-	XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
-	XMStoreFloat4x4(&mView, view);
-
+	UpdateCamera();
 	// Cycle through the circular frame resource array.
 	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
 	mCurrFrameResource = mFrameResources[mCurrFrameResourceIndex].get();
@@ -122,50 +112,9 @@ void Demo::Update()
 		CloseHandle(eventHandle);
 	}
 
-	// Update the constant buffer with the latest worldViewProj matrix.
-	auto currObjectCB = mCurrFrameResource->ObjectCB.get();
-	for (auto& e : mAllRitems)
-	{
-		// Only update the cbuffer data if the constants have changed.  
-		// This needs to be tracked per frame resource.
-		if (e->NumFramesDirty > 0)
-		{
-			XMMATRIX world = XMLoadFloat4x4(&e->World);
-
-			ObjectConstants objConstants;
-			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
-
-			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
-
-			// Next FrameResource need to be updated too.
-			e->NumFramesDirty--;
-		}
-	}
-
-	// Update the pass buffer.
-	auto currPassCB = mCurrFrameResource->PassCB.get();
-	XMMATRIX proj = XMLoadFloat4x4(&mProj);
-
-	XMMATRIX viewProj = XMMatrixMultiply(view, proj);
-	XMMATRIX invView = XMMatrixInverse(&XMMatrixDeterminant(view), view);
-	XMMATRIX invProj = XMMatrixInverse(&XMMatrixDeterminant(proj), proj);
-	XMMATRIX invViewProj = XMMatrixInverse(&XMMatrixDeterminant(viewProj), viewProj);
-
-	XMStoreFloat4x4(&mMainPassCB.View, XMMatrixTranspose(view));
-	XMStoreFloat4x4(&mMainPassCB.InvView, XMMatrixTranspose(invView));
-	XMStoreFloat4x4(&mMainPassCB.Proj, XMMatrixTranspose(proj));
-	XMStoreFloat4x4(&mMainPassCB.InvProj, XMMatrixTranspose(invProj));
-	XMStoreFloat4x4(&mMainPassCB.ViewProj, XMMatrixTranspose(viewProj));
-	XMStoreFloat4x4(&mMainPassCB.InvViewProj, XMMatrixTranspose(invViewProj));
-	mMainPassCB.EyePosW = mEyePos;
-	mMainPassCB.RenderTargetSize = XMFLOAT2{ (float)mClientWidth, (float)mClientHeight };
-	mMainPassCB.InvRenderTargetSize = { 1.0f / mClientWidth, 1.0f / mClientHeight };
-	mMainPassCB.NearZ = 1.0f;
-	mMainPassCB.FarZ = 1000.0f;
-	mMainPassCB.TotalTime = GameTimer::GetInstancePtr()->TotalTime();
-	mMainPassCB.DeltaTime = GameTimer::GetInstancePtr()->DeltaTime();
-
-	currPassCB->CopyData(0, mMainPassCB);
+	UpdateObjectCBs();
+	UpdateMainPassCB();
+	UpdateWaves();
 }
 
 void Demo::Draw()
@@ -249,7 +198,7 @@ void Demo::Draw()
 	//mCommandList->SetGraphicsRootDescriptorTable(1, passCbvHandle);
 	mCommandList->SetGraphicsRootConstantBufferView(1, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
 
-	DrawRenderItems(mCommandList.Get(), mOpaqueRitems);
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque]);
 
 	ID3D12DescriptorHeap* descriptorHeapsSrv[] = { mSrvHeap.Get() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeapsSrv), descriptorHeapsSrv);
@@ -309,6 +258,110 @@ void Demo::OnMouseMove(WPARAM btnState, int x, int y)
 	mLastMousePos.y = y;
 }
 
+void Demo::UpdateCamera()
+{
+	// Convert Spherical to Cartesian coordinates.
+	mEyePos.x = mRadius * sinf(mPhi) * cosf(mTheta);
+	mEyePos.z = mRadius * sinf(mPhi) * sinf(mTheta);
+	mEyePos.y = mRadius * cosf(mPhi);
+
+	// Build the view matrix.
+	XMVECTOR pos = XMVectorSet(mEyePos.x, mEyePos.y, mEyePos.z, 1.0f);
+	XMVECTOR target = XMVectorZero();
+	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+
+	XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
+	XMStoreFloat4x4(&mView, view);
+}
+
+void Demo::UpdateObjectCBs()
+{
+	// Update the constant buffer with the latest worldViewProj matrix.
+	auto currObjectCB = mCurrFrameResource->ObjectCB.get();
+	for (auto& e : mAllRitems)
+	{
+		// Only update the cbuffer data if the constants have changed.  
+		// This needs to be tracked per frame resource.
+		if (e->NumFramesDirty > 0)
+		{
+			XMMATRIX world = XMLoadFloat4x4(&e->World);
+
+			ObjectConstants objConstants;
+			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
+
+			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
+
+			// Next FrameResource need to be updated too.
+			e->NumFramesDirty--;
+		}
+	}
+}
+
+void Demo::UpdateMainPassCB()
+{
+	// Update the pass buffer.
+	auto currPassCB = mCurrFrameResource->PassCB.get();
+	XMMATRIX proj = XMLoadFloat4x4(&mProj);
+	XMMATRIX view = XMLoadFloat4x4(&mView);
+
+	XMMATRIX viewProj = XMMatrixMultiply(view, proj);
+	XMMATRIX invView = XMMatrixInverse(&XMMatrixDeterminant(view), view);
+	XMMATRIX invProj = XMMatrixInverse(&XMMatrixDeterminant(proj), proj);
+	XMMATRIX invViewProj = XMMatrixInverse(&XMMatrixDeterminant(viewProj), viewProj);
+
+	XMStoreFloat4x4(&mMainPassCB.View, XMMatrixTranspose(view));
+	XMStoreFloat4x4(&mMainPassCB.InvView, XMMatrixTranspose(invView));
+	XMStoreFloat4x4(&mMainPassCB.Proj, XMMatrixTranspose(proj));
+	XMStoreFloat4x4(&mMainPassCB.InvProj, XMMatrixTranspose(invProj));
+	XMStoreFloat4x4(&mMainPassCB.ViewProj, XMMatrixTranspose(viewProj));
+	XMStoreFloat4x4(&mMainPassCB.InvViewProj, XMMatrixTranspose(invViewProj));
+	mMainPassCB.EyePosW = mEyePos;
+	mMainPassCB.RenderTargetSize = XMFLOAT2{ (float)mClientWidth, (float)mClientHeight };
+	mMainPassCB.InvRenderTargetSize = { 1.0f / mClientWidth, 1.0f / mClientHeight };
+	mMainPassCB.NearZ = 1.0f;
+	mMainPassCB.FarZ = 1000.0f;
+	mMainPassCB.TotalTime = GameTimer::GetInstancePtr()->TotalTime();
+	mMainPassCB.DeltaTime = GameTimer::GetInstancePtr()->DeltaTime();
+
+	currPassCB->CopyData(0, mMainPassCB);
+}
+
+void Demo::UpdateWaves()
+{
+	// Every quarter second, generate a random wave.
+	static float t_base = 0.0f;
+	if ((GameTimer::GetInstancePtr()->TotalTime() - t_base) >= 0.25f)
+	{
+		t_base += 0.25f;
+
+		int i = MathHelper::Rand(4, mWaves->RowCount() - 5);
+		int j = MathHelper::Rand(4, mWaves->ColumnCount() - 5);
+
+		float r = MathHelper::RandF(0.2f, 0.5f);
+
+		mWaves->Disturb(i, j, r);
+	}
+
+	// Update the wave simulation.
+	mWaves->Update(GameTimer::GetInstancePtr()->DeltaTime());
+
+	// Update the wave vertex buffer with the new solution.
+	auto currWavesVB = mCurrFrameResource->WavesVB.get();
+	for (int i = 0; i < mWaves->VertexCount(); ++i)
+	{
+		PrimitiveTypes::PosNorColVertex v;
+
+		v.Position = mWaves->Position(i);
+		v.Normal = mWaves->Normal(i);
+		v.Color = XMFLOAT4(DirectX::Colors::Blue);
+
+		currWavesVB->CopyData(i, v);
+	}
+
+	// Set the dynamic VB of the wave renderitem to the current frame VB.
+	mWavesRitem->Geo->VertexBufferGPU = currWavesVB->Resource();
+}
+
 void Demo::CalculateFrameStats()
 {
 	// Code computes the average frames per second, and also the 
@@ -341,7 +394,7 @@ void Demo::CalculateFrameStats()
 
 void Demo::BuildDescriptorHeaps()
 {
-	UINT objCount = (UINT)mOpaqueRitems.size();
+	UINT objCount = (UINT)mRitemLayer[(int)RenderLayer::Opaque].size();
 
 	// Need a CBV descriptor for each object for each frame resource,
 	// +1 for the perPass CBV for each frame resource.
@@ -356,11 +409,11 @@ void Demo::BuildDescriptorHeaps()
 	ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(mCbvHeap.GetAddressOf())));
 }
 
-void Demo::BuildConstantBuffers()
+void Demo::BuildConstantBufferViews()
 {
 	UINT objCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(ObjectConstants));
 
-	UINT objCount = (UINT)mOpaqueRitems.size();
+	UINT objCount = (UINT)mRitemLayer[(int)RenderLayer::Opaque].size();
 	// Need a CBV descriptor for each object for each frame resource.
 	for (int frameIndex = 0; frameIndex < gNumFrameResources; ++frameIndex)
 	{
@@ -453,21 +506,22 @@ void Demo::BuildShadersAndInputLayout()
 	//};
 }
 
-void Demo::BuildBoxGeometry()
+void Demo::BuildLandGeometry()
 {
 	GeometryGenerator geoGen;
 	//GeometryGenerator::MeshData model = geoGen.CreateGeosphere(1.0f, 3);
 	//GeometryGenerator::MeshData model = geoGen.CreateCylinder(1.0f, 1.0f, 1.0f, 30, 1);
 	//GeometryGenerator::MeshData model = geoGen.CreateBox(1.0f, 1.0f, 1.0f, 0);
 	//GeometryGenerator::MeshData model = geoGen.CreateSphere(1.0f, 20, 20);
-	GeometryGenerator::MeshData model = geoGen.CreateGrid(160.0f, 160.0f, 50, 50);
+	GeometryGenerator::MeshData model = geoGen.CreateGrid(128.0f, 128.0f, 32, 32);
 
 	std::vector<PrimitiveTypes::PosNorColVertex> vertices(model.Vertices.size());
 
 	for (size_t i = 0; i < model.Vertices.size(); ++i)
 	{
-		vertices[i].Position = { model.Vertices[i].Position.x, GetHillsHeight(model.Vertices[i].Position.x, model.Vertices[i].Position.z), model.Vertices[i].Position.z };
-		vertices[i].Normal = GetHillsNormal(model.Vertices[i].Position.x, model.Vertices[i].Position.z);
+		auto& p = model.Vertices[i];
+		vertices[i].Position = { p.Position.x, GetHillsHeight(p.Position.x, p.Position.z), p.Position.z };
+		vertices[i].Normal = GetHillsNormal(p.Position.x, p.Position.z);
 		vertices[i].Color = XMFLOAT4(DirectX::Colors::DarkGreen);
 	}
 
@@ -507,30 +561,98 @@ void Demo::BuildBoxGeometry()
 	mGeometries[boxGeo->Name] = std::move(boxGeo);
 }
 
+void Demo::BuildWaterGeometry()
+{
+	std::vector<std::uint16_t> indices(3 * mWaves->TriangleCount()); // 3 indices per face
+	assert(mWaves->VertexCount() < 0x0000ffff);
+
+	// Iterate over each quad.
+	int m = mWaves->RowCount();
+	int n = mWaves->ColumnCount();
+	int k = 0;
+	for (int i = 0; i < m - 1; ++i)
+	{
+		for (int j = 0; j < n - 1; ++j)
+		{
+			indices[k] = i * n + j;
+			indices[k + 1] = i * n + j + 1;
+			indices[k + 2] = (i + 1) * n + j;
+
+			indices[k + 3] = (i + 1) * n + j;
+			indices[k + 4] = i * n + j + 1;
+			indices[k + 5] = (i + 1) * n + j + 1;
+
+			k += 6; // next quad
+		}
+	}
+
+	UINT vbByteSize = mWaves->VertexCount() * sizeof(PrimitiveTypes::PosNorColVertex);
+	UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
+
+	auto geo = std::make_unique<MeshGeometry>();
+	geo->Name = "waterGeo";
+
+	// Set dynamically.
+	geo->VertexBufferCPU = nullptr;
+	geo->VertexBufferGPU = nullptr;
+
+	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+
+	geo->IndexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
+		mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+
+	geo->VertexByteStride = sizeof(PrimitiveTypes::PosNorColVertex);
+	geo->VertexBufferByteSize = vbByteSize;
+	geo->IndexFormat = DXGI_FORMAT_R16_UINT;
+	geo->IndexBufferByteSize = ibByteSize;
+
+	SubmeshGeometry submesh;
+	submesh.IndexCount = (UINT)indices.size();
+	submesh.StartIndexLocation = 0;
+	submesh.BaseVertexLocation = 0;
+
+	geo->DrawArgs["grid"] = submesh;
+
+	mGeometries["waterGeo"] = std::move(geo);
+}
+
 void Demo::BuildFrameResources()
 {
 	for (int i = 0; i < gNumFrameResources; ++i)
 	{
 		mFrameResources.push_back(std::make_unique<FrameResource>(mD3D12Device.Get(),
-			1, (UINT)mAllRitems.size()));
+			1, (UINT)mAllRitems.size(), mWaves->VertexCount()));
 	}
 }
 
 void Demo::BuildRenderItems()
 {
+	auto wavesRitem = std::make_unique<RenderItem>();
+	wavesRitem->World = MathHelper::Identity4x4();
+	wavesRitem->ObjCBIndex = 0;
+	wavesRitem->Geo = mGeometries["waterGeo"].get();
+	wavesRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	wavesRitem->IndexCount = wavesRitem->Geo->DrawArgs["grid"].IndexCount;
+	wavesRitem->StartIndexLocation = wavesRitem->Geo->DrawArgs["grid"].StartIndexLocation;
+	wavesRitem->BaseVertexLocation = wavesRitem->Geo->DrawArgs["grid"].BaseVertexLocation;
+
+	mWavesRitem = wavesRitem.get();
+	mRitemLayer[(int)RenderLayer::Opaque].push_back(wavesRitem.get());
+
 	auto boxRitem = std::make_unique<RenderItem>();
-	//XMStoreFloat4x4(&boxRitem->World, XMMatrixScaling(2.0f, 2.0f, 2.0f) * XMMatrixTranslation(0.0f, 0.5f, 0.0f));
-	boxRitem->ObjCBIndex = 0;
+	boxRitem->ObjCBIndex = 1;
 	boxRitem->Geo = mGeometries["boxGeo"].get();
 	boxRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	boxRitem->IndexCount = boxRitem->Geo->DrawArgs["box"].IndexCount;
 	boxRitem->StartIndexLocation = boxRitem->Geo->DrawArgs["box"].StartIndexLocation;
 	boxRitem->BaseVertexLocation = boxRitem->Geo->DrawArgs["box"].BaseVertexLocation;
-	mAllRitems.push_back(std::move(boxRitem));
+
+	mRitemLayer[(int)RenderLayer::Opaque].push_back(boxRitem.get());
 
 	// All the render items are opaque.
-	for (auto& e : mAllRitems)
-		mOpaqueRitems.push_back(e.get());
+	mAllRitems.push_back(std::move(wavesRitem));
+	mAllRitems.push_back(std::move(boxRitem));
 }
 
 void Demo::BuildPSO()
@@ -583,7 +705,7 @@ void Demo::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector
 		cmdList->IASetPrimitiveTopology(ri->PrimitiveType);
 
 		// Offset to the CBV in the descriptor heap for this object and for this frame resource.
-		UINT cbvIndex = mCurrFrameResourceIndex * (UINT)mOpaqueRitems.size() + ri->ObjCBIndex;
+		UINT cbvIndex = mCurrFrameResourceIndex * (UINT)mRitemLayer[(int)RenderLayer::Opaque].size() + ri->ObjCBIndex;
 		auto cbvHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
 		cbvHandle.Offset(cbvIndex, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
