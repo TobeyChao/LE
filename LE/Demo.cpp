@@ -224,11 +224,12 @@ void Demo::Draw()
 	// swap the back and front buffers
 	ThrowIfFailed(mSwapChain->Present(0, 0));
 	mCurrentBackBuffer = (mCurrentBackBuffer + 1) % SwapChainBufferCount;
+	mCurrFrameResource->Fence = ++mCurrentFence;
 
-	// Wait until frame commands are complete.  This waiting is inefficient and is
-	// done for simplicity.  Later we will show how to organize our rendering code
-	// so we do not have to wait per frame.
-	FlushCommandQueue();
+	// Add an instruction to the command queue to set a new fence point. 
+	// Because we are on the GPU timeline, the new fence point won't be 
+	// set until the GPU finishes processing all the commands prior to this Signal().
+	mCommandQueue->Signal(mFence.Get(), mCurrentFence);
 }
 
 void Demo::OnMouseMove(WPARAM btnState, int x, int y)
