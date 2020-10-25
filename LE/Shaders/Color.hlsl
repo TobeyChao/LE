@@ -100,7 +100,7 @@ float4 PS(VertexOut vertIn) : SV_Target
     // 最终镜面光颜色
 	float3 specularColor = lightStrength * fresnelFactor * roughnessFactor;
     // 3.环境光
-    float4 ambientColor = gAmbientLight * gDiffuseAlbedo;
+    float4 ambientColor = gAmbientLight * diffuseAlbedo;
     // 最终颜色
 	float3 color = ambientColor.rgb + diffuseColor + specularColor;
 	return float4(color, diffuseAlbedo.a);
