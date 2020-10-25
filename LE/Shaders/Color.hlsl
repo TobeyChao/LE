@@ -38,9 +38,18 @@ cbuffer cbPass : register(b2)
     Light gLights[MaxLights];
 };
 
+Texture2D gDiffuseMap : register(t0);
+SamplerState gsamPointWrap  : register(s0);
+SamplerState gsamPointClamp  : register(s0);
+SamplerState gsamLinearWrap  : register(s0);
+SamplerState gsamLinearClamp  : register(s0);
+SamplerState gsamAnisotropicWrap  : register(s0);
+SamplerState gsamAnisotropicClamp  : register(s0);
+
 struct VertexIn
 {
     float3 PosL : POSITION;
+    float2 Texcoord : TEXCOORD;
     float3 NormalL : Normal;
     float4 Color : COLOR0;  // Vertex Color
 };
@@ -50,6 +59,7 @@ struct VertexOut
     float4 PosH : SV_POSITION;
     float3 PosW : POSITION;
     float3 NormalW : Normal;
+    float2 TexC : TEXCOORD;
 };
 
 VertexOut VS(VertexIn vertIn)
@@ -58,6 +68,8 @@ VertexOut VS(VertexIn vertIn)
     float4 posW = mul(float4(vertIn.PosL, 1.0f), gWorld);
     vertOut.PosH = mul(posW, gViewProj);
     vertOut.PosW = posW.xyz;
+    float4 texC = mul(float4(vertIn.Texcoord, 0.0f, 1.0f), gMatTransform);
+    vertOut.TexC = texC.xy;
     vertOut.NormalW = mul(vertIn.NormalL, (float3x3)gWorld);
     return vertOut;
 }
@@ -75,7 +87,8 @@ float4 PS(VertexOut vertIn) : SV_Target
     // 光强
     float3 lightStrength = gLights[0].Strength.rgb * cosIncidentAngle;
     // 1.漫反射光
-	float3 diffuseColor = lightStrength * gDiffuseAlbedo.rgb;
+    float4 diffuseAlbedo = gDiffuseMap.Sample(gsamLinearWrap, vertIn.TexC) * gDiffuseAlbedo;
+	float3 diffuseColor = lightStrength * diffuseAlbedo.rgb;
     // 2.镜面光
 	// 2.1表面粗糙度
 	float3 halfDir =  normalize(viewDir + worldLightDir);
@@ -89,6 +102,6 @@ float4 PS(VertexOut vertIn) : SV_Target
     // 3.环境光
     float4 ambientColor = gAmbientLight * gDiffuseAlbedo;
     // 最终颜色
-	float3 color = ambientColor + diffuseColor + specularColor;
-	return float4(color, gDiffuseAlbedo.a);
+	float3 color = ambientColor.rgb + diffuseColor + specularColor;
+	return float4(color, diffuseAlbedo.a);
 }

@@ -73,10 +73,10 @@ int main(int, char**)
 			}
 		}
 
+		delete app;
+
 		::DestroyWindow(hwnd);
 		::UnregisterClass(wc.lpszClassName, wc.hInstance);
-
-		delete app;
 	}
 	catch (DxException& e)
 	{

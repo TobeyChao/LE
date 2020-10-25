@@ -89,6 +89,12 @@
     <ClInclude Include="Waves.h">
       <Filter>App</Filter>
     </ClInclude>
+    <ClInclude Include="WICTextureLoader12.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="DDSTextureLoader12.h">
+      <Filter>Common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Main.cpp">
@@ -138,6 +144,12 @@
     </ClCompile>
     <ClCompile Include="Waves.cpp">
       <Filter>App</Filter>
+    </ClCompile>
+    <ClCompile Include="WICTextureLoader12.cpp">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="DDSTextureLoader12.cpp">
+      <Filter>Common</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

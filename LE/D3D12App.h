@@ -1,4 +1,10 @@
 #pragma once
+
+#if defined(DEBUG) || defined(_DEBUG)
+#define _CRTDBG_MAP_ALLOC
+#include <crtdbg.h>
+#endif
+
 #include "D3D12Util.h"
 #include "TSingleton.h"
 #include "CDescriptorHeapWrapper.h"

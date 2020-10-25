@@ -82,6 +82,7 @@ public:
 
 	void CalculateFrameStats();
 
+	void LoadTextures();
 	void BuildMaterials();
 	void BuildRootSignature();
 	void BuildShadersAndInputLayout();
@@ -90,10 +91,13 @@ public:
 	void BuildRenderItems();
 	void BuildFrameResources();
 	void BuildDescriptorHeaps();
+	void BuildShaderResourceViews();
 	void BuildConstantBufferViews();
 	void BuildPSO();
 
 	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);
+
+	std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> GetStaticSamplers();
 
 	float GetHillsHeight(float x, float z) const
 	{
@@ -119,14 +123,13 @@ private:
 	int mCurrFrameResourceIndex = 0;
 
 	ComPtr<ID3D12RootSignature> mRootSignature = nullptr;
-	std::unordered_map<std::string, ComPtr<ID3DBlob>> mShaders;
-
+	ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeap = nullptr;
 	ComPtr<ID3D12DescriptorHeap> mCbvHeap = nullptr;
 
+	std::unordered_map<std::string, ComPtr<ID3DBlob>> mShaders;
 	std::unordered_map<std::string, std::unique_ptr<MeshGeometry>> mGeometries;
-
 	std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
-
+	std::unordered_map<std::string, std::unique_ptr<Texture>> mTextures;
 	std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
 
 	RenderItem* mWavesRitem = nullptr;

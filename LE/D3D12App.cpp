@@ -216,7 +216,7 @@ void D3D12App::InitD3D()
 
 void D3D12App::CreateD3D12Device()
 {
-#ifdef DX12_ENABLE_DEBUG_LAYER
+#if defined(DEBUG) || defined(_DEBUG) 
 	ComPtr<ID3D12Debug> debugController;
 	ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(debugController.GetAddressOf())));
 	debugController->EnableDebugLayer();

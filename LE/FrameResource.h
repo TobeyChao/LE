@@ -49,7 +49,7 @@ struct FrameResource
 	// that reference it.  So each frame needs their own cbuffers.
 	std::unique_ptr<UploadBuffer<PassConstants>> PassCB = nullptr;
 	std::unique_ptr<UploadBuffer<ObjectConstants>> ObjectCB = nullptr;
-	std::unique_ptr<UploadBuffer<PrimitiveTypes::PosNorColVertex>> WavesVB = nullptr;
+	std::unique_ptr<UploadBuffer<PrimitiveTypes::PosTexNorColVertex>> WavesVB = nullptr;
 	std::unique_ptr<UploadBuffer<MaterialConstants>> MaterialCB = nullptr;
 	// Fence value to mark commands up to this fence point.  This lets us
 	// check if these frame resources are still in use by the GPU.
