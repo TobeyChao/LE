@@ -43,6 +43,7 @@ struct RenderItem
 enum class RenderLayer : int
 {
 	Opaque = 0,
+	Transparent = 1,
 	Count
 };
 
@@ -75,6 +76,7 @@ public:
 	void OnMouseMove(WPARAM btnState, int x, int y) override;
 
 	void UpdateCamera();
+	void AnimateMaterials();
 	void UpdateObjectCBs();
 	void UpdateMainPassCB();
 	void UpdateMaterialCB();
