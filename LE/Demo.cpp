@@ -27,6 +27,8 @@ void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 
 	mWaves = std::make_unique<Waves>(128, 128, 1.0f, 0.03f, 4.0f, 0.2f);
 
+	mCameras["MainCamera"] = std::make_unique<Camera>();
+
 	// Setup Dear ImGui context
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
@@ -101,6 +103,7 @@ void Demo::OnResize()
 
 void Demo::Update()
 {
+	ProcessInput();
 	UpdateCamera();
 	// Cycle through the circular frame resource array.
 	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
@@ -238,49 +241,64 @@ void Demo::Draw()
 
 void Demo::OnMouseMove(WPARAM btnState, int x, int y)
 {
-	if ((btnState & MK_LBUTTON) != 0)
+	if ((btnState & MK_RBUTTON) != 0)
 	{
 		// Make each pixel correspond to a quarter of a degree.
 		float dx = XMConvertToRadians(0.25f * static_cast<float>(x - mLastMousePos.x));
 		float dy = XMConvertToRadians(0.25f * static_cast<float>(y - mLastMousePos.y));
 
 		// Update angles based on input to orbit camera around box.
-		//mTheta += dx;
-		//mPhi += dy;
+		mYaw += dx;
+		mPitch += dy;
 
 		// Restrict the angle mPhi.
-		mPhi = MathHelper::Clamp(mPhi, 0.1f, MathHelper::Pi - 0.1f);
+		//mPhi = MathHelper::Clamp(mPhi, 0.1f, MathHelper::Pi - 0.1f);
 	}
-	else if ((btnState & MK_RBUTTON) != 0)
-	{
-		// Make each pixel correspond to 0.005 unit in the scene.
-		float dx = 0.005f * static_cast<float>(x - mLastMousePos.x);
-		float dy = 0.005f * static_cast<float>(y - mLastMousePos.y);
+	//else if ((btnState & MK_LBUTTON) != 0)
+	//{
+	//	// Make each pixel correspond to 0.005 unit in the scene.
+	//	float dx = 0.005f * static_cast<float>(x - mLastMousePos.x);
+	//	float dy = 0.005f * static_cast<float>(y - mLastMousePos.y);
 
-		// Update the camera radius based on input.
-		mRadius += dx - dy;
+	//	// Update the camera radius based on input.
+	//	mRadius += dx - dy;
 
-		// Restrict the radius.
-		mRadius = MathHelper::Clamp(mRadius, 3.0f, 150.0f);
-	}
+	//	// Restrict the radius.
+	//	mRadius = MathHelper::Clamp(mRadius, 3.0f, 150.0f);
+	//}
 
 	mLastMousePos.x = x;
 	mLastMousePos.y = y;
 }
 
+void Demo::ProcessInput()
+{
+	if (GetAsyncKeyState(0x57) & 0x8000)
+		mCameras["MainCamera"]->MoveForward();
+	if (GetAsyncKeyState(0x53) & 0x8000)
+		mCameras["MainCamera"]->MoveBack();
+	if (GetAsyncKeyState(0x41) & 0x8000)
+		mCameras["MainCamera"]->MoveLeft();
+	if (GetAsyncKeyState(0x44) & 0x8000)
+		mCameras["MainCamera"]->MoveRight();
+}
+
 void Demo::UpdateCamera()
 {
 	// Convert Spherical to Cartesian coordinates.
-	mEyePos.x = mRadius * sinf(mPhi) * cosf(mTheta);
-	mEyePos.z = mRadius * sinf(mPhi) * sinf(mTheta);
-	mEyePos.y = mRadius * cosf(mPhi);
+	//mEyePos.x = mRadius * sinf(mPitch) * cosf(mYaw);
+	//mEyePos.z = mRadius * sinf(mPitch) * sinf(mYaw);
+	//mEyePos.y = mRadius * cosf(mPitch);
 
 	// Build the view matrix.
 	XMVECTOR pos = XMVectorSet(mEyePos.x, mEyePos.y, mEyePos.z, 1.0f);
 	XMVECTOR target = XMVectorZero();
 	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-
-	XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
+	mCameras["MainCamera"]->SetPitch(mPitch);
+	mCameras["MainCamera"]->SetYaw(mYaw);
+	mCameras["MainCamera"]->ComputeInfo();
+	XMStoreFloat3(&mEyePos, mCameras["MainCamera"]->GetCameraPosition());
+	const XMMATRIX& view = mCameras["MainCamera"]->GetViewMatrix()/*XMMatrixLookAtLH(pos, target, up)*/;
 	XMStoreFloat4x4(&mView, view);
 }
 

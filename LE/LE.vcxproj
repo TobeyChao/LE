@@ -19,6 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Camera.h" />
     <ClInclude Include="CDescriptorHeapWrapper.h" />
     <ClInclude Include="D3D12App.h" />
     <ClInclude Include="D3D12InputLayouts.h" />
@@ -46,6 +47,7 @@
     <ClInclude Include="WICTextureLoader12.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Camera.cpp" />
     <ClCompile Include="D3D12App.cpp" />
     <ClCompile Include="D3D12InputLayouts.cpp" />
     <ClCompile Include="D3D12Util.cpp" />

@@ -95,6 +95,9 @@
     <ClInclude Include="DDSTextureLoader12.h">
       <Filter>Common</Filter>
     </ClInclude>
+    <ClInclude Include="Camera.h">
+      <Filter>Common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Main.cpp">
@@ -149,6 +152,9 @@
       <Filter>Common</Filter>
     </ClCompile>
     <ClCompile Include="DDSTextureLoader12.cpp">
+      <Filter>Common</Filter>
+    </ClCompile>
+    <ClCompile Include="Camera.cpp">
       <Filter>Common</Filter>
     </ClCompile>
   </ItemGroup>

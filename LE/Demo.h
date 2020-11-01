@@ -6,6 +6,7 @@
 #include "D3D12InputLayouts.h"
 #include "MeshGeometry.h"
 #include "Waves.h"
+#include "Camera.h"
 #include <DirectXColors.h>
 
 using namespace DirectX;
@@ -75,6 +76,7 @@ public:
 
 	void OnMouseMove(WPARAM btnState, int x, int y) override;
 
+	void ProcessInput();
 	void UpdateCamera();
 	void AnimateMaterials();
 	void UpdateObjectCBs();
@@ -147,12 +149,13 @@ private:
 
 	std::unordered_map<std::string, ComPtr<ID3D12PipelineState>> mPSOs;
 
+	std::unordered_map<std::string, std::unique_ptr<Camera>> mCameras;
 	XMFLOAT3 mEyePos;
 	XMFLOAT4X4 mView;
 	XMFLOAT4X4 mProj;
 
-	float mTheta = XM_PI;
-	float mPhi = XM_PIDIV4;
+	float mYaw = 0;
+	float mPitch = 0;
 	float mRadius = 100.0f;
 
 	float mSunTheta = 1.25f * XM_PI;
