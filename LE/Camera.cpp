@@ -1,4 +1,5 @@
 #include "Camera.h"
+#include "GameTimer.h"
 
 Camera::Camera()
 {
@@ -10,25 +11,46 @@ Camera::~Camera()
 
 void Camera::MoveForward()
 {
-	mPosition = DirectX::XMVectorMultiplyAdd(mForward, { 1.f, 1.f, 1.f }, mPosition);
+	mPosition = DirectX::XMVectorMultiplyAdd(mForward,
+		{
+			mSpeed * GameTimer::GetInstance().DeltaTime(),
+			mSpeed * GameTimer::GetInstance().DeltaTime(),
+			mSpeed * GameTimer::GetInstance().DeltaTime()
+		},
+		mPosition);
 	mDirty = true;
 }
 
 void Camera::MoveBack()
 {
-	mPosition = DirectX::XMVectorMultiplyAdd(mForward, { -1.f, -1.f, -1.f }, mPosition);
+	mPosition = DirectX::XMVectorMultiplyAdd(mForward,
+		{
+			-mSpeed * GameTimer::GetInstance().DeltaTime(),
+			-mSpeed * GameTimer::GetInstance().DeltaTime(),
+			-mSpeed * GameTimer::GetInstance().DeltaTime()
+		}, mPosition);
 	mDirty = true;
 }
 
 void Camera::MoveLeft()
 {
-	mPosition = DirectX::XMVectorMultiplyAdd(mRight, { -1.f, -1.f, -1.f }, mPosition);
+	mPosition = DirectX::XMVectorMultiplyAdd(mRight,
+		{
+			-mSpeed * GameTimer::GetInstance().DeltaTime(),
+			-mSpeed * GameTimer::GetInstance().DeltaTime(),
+			-mSpeed * GameTimer::GetInstance().DeltaTime()
+		}, mPosition);
 	mDirty = true;
 }
 
 void Camera::MoveRight()
 {
-	mPosition = DirectX::XMVectorMultiplyAdd(mRight, { 1.f, 1.f, 1.f }, mPosition);
+	mPosition = DirectX::XMVectorMultiplyAdd(mRight,
+		{
+			mSpeed * GameTimer::GetInstance().DeltaTime(),
+			mSpeed * GameTimer::GetInstance().DeltaTime(),
+			mSpeed * GameTimer::GetInstance().DeltaTime()
+		}, mPosition);
 	mDirty = true;
 }
 

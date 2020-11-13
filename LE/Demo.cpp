@@ -149,8 +149,6 @@ void Demo::Draw()
 		ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
 		ImGui::Checkbox("Another Window", &show_another_window);
 		ImGui::Checkbox("Wire Frame Mode", &show_wireframe);
-		ImGui::SliderFloat("Theta", &mTheta, 0.0f, XM_PI);		// Edit 1 float using a slider from 0.0f to XM_PI
-		ImGui::SliderFloat("Phi", &mPhi, 0.1f, XM_PI - 0.1f);	// Edit 1 float using a slider from 0.0f to XM_PI - 0.1f
 		ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
 
 		if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)

@@ -25,6 +25,8 @@ public:
 
 	inline const DirectX::XMMATRIX& GetViewMatrix() const { return mViewMat; }
 private:
+	float mSpeed = 20.0;
+
 	bool mDirty = true;
 
 	float mPitch = 0;
