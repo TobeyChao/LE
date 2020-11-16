@@ -81,7 +81,6 @@ void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 	BuildFrameResources();
 	BuildDescriptorHeaps();
 	BuildShaderResourceViews();
-	BuildConstantBufferViews();
 	BuildPSO();
 
 	// Execute the initialization commands.
@@ -686,20 +685,6 @@ void Demo::BuildFrameResources()
 
 void Demo::BuildDescriptorHeaps()
 {
-	UINT objCount = (UINT)mRitemLayer[(int)RenderLayer::Opaque].size();
-
-	// Need a CBV descriptor for each object for each frame resource,
-	// +1 for the perPass CBV for each frame resource.
-	UINT numDescriptors = (objCount + 1) * gNumFrameResources;
-	mPassCbvOffset = objCount * gNumFrameResources;
-
-	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
-	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	cbvHeapDesc.NodeMask = 0;
-	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	cbvHeapDesc.NumDescriptors = numDescriptors;
-	ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(mCbvHeap.GetAddressOf())));
-
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	srvHeapDesc.NodeMask = 0;
@@ -739,56 +724,6 @@ void Demo::BuildShaderResourceViews()
 	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
 
 	mD3D12Device->CreateShaderResourceView(waterTex.Get(), &srvDesc, hDescriptor);
-}
-
-void Demo::BuildConstantBufferViews()
-{
-	UINT objCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(ObjectConstants));
-
-	UINT objCount = (UINT)mRitemLayer[(int)RenderLayer::Opaque].size();
-	// Need a CBV descriptor for each object for each frame resource.
-	for (int frameIndex = 0; frameIndex < gNumFrameResources; ++frameIndex)
-	{
-		auto objectCB = mFrameResources[frameIndex]->ObjectCB->Resource();
-		for (UINT i = 0; i < objCount; ++i)
-		{
-			D3D12_GPU_VIRTUAL_ADDRESS cbAddress = objectCB->GetGPUVirtualAddress();
-
-			// Offset to the ith object constant buffer in the buffer.
-			cbAddress += i * objCBByteSize;
-
-			// Offset to the object cbv in the descriptor heap.
-			int heapIndex = frameIndex * objCount + i;
-			auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
-			handle.Offset(heapIndex, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-
-			D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
-			cbvDesc.BufferLocation = cbAddress;
-			cbvDesc.SizeInBytes = objCBByteSize;
-
-			mD3D12Device->CreateConstantBufferView(&cbvDesc, handle);
-		}
-	}
-
-	UINT passCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(PassConstants));
-
-	for (int frameIndex = 0; frameIndex < gNumFrameResources; ++frameIndex)
-	{
-		auto passCB = mFrameResources[frameIndex]->PassCB->Resource();
-
-		auto address = passCB->GetGPUVirtualAddress();
-
-		// Offset to the object cbv in the descriptor heap.
-		int heapIndex = mPassCbvOffset + frameIndex;
-		auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
-		handle.Offset(heapIndex, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-
-		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
-		cbvDesc.BufferLocation = address;
-		cbvDesc.SizeInBytes = passCBByteSize;
-
-		mD3D12Device->CreateConstantBufferView(&cbvDesc, handle);
-	}
 }
 
 void Demo::BuildRenderItems()
@@ -902,10 +837,6 @@ void Demo::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector
 		tex.Offset(ri->Mat->DiffuseSrvHeapIndex, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 		cmdList->SetGraphicsRootDescriptorTable(0, tex);
 
-		//UINT cbvIndex = mCurrFrameResourceIndex * (UINT)mRitemLayer[(int)RenderLayer::Opaque].size() + ri->ObjCBIndex;
-		//auto cbvHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
-		//cbvHandle.Offset(cbvIndex, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-		//cmdList->SetGraphicsRootDescriptorTable(1, cbvHandle);
 		D3D12_GPU_VIRTUAL_ADDRESS objAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
 		cmdList->SetGraphicsRootConstantBufferView(1, objAddress);
 

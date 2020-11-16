@@ -96,7 +96,6 @@ public:
 	void BuildFrameResources();
 	void BuildDescriptorHeaps();
 	void BuildShaderResourceViews();
-	void BuildConstantBufferViews();
 	void BuildPSO();
 
 	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);
@@ -128,7 +127,6 @@ private:
 
 	ComPtr<ID3D12RootSignature> mRootSignature = nullptr;
 	ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeap = nullptr;
-	ComPtr<ID3D12DescriptorHeap> mCbvHeap = nullptr;
 
 	std::unordered_map<std::string, ComPtr<ID3DBlob>> mShaders;
 	std::unordered_map<std::string, std::unique_ptr<MeshGeometry>> mGeometries;

@@ -150,33 +150,6 @@ public:
 		}
 	}
 
-	//static inline void CreateTextureSRV(
-	//	ID3D12Device* device,
-	//	ID3D12Resource* resource,
-	//	DX::DescriptorHeap* descriptorHeap,
-	//	UINT* descriptorHeapIndex,
-	//	D3D12_CPU_DESCRIPTOR_HANDLE* cpuHandle,
-	//	D3D12_GPU_DESCRIPTOR_HANDLE* gpuHandle,
-	//	D3D12_SRV_DIMENSION srvDimension = D3D12_SRV_DIMENSION_TEXTURE2D)
-	//{
-	//	// Describe and create an SRV.
-	//	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-	//	srvDesc.ViewDimension = srvDimension;
-	//	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	//	srvDesc.Format = resource->GetDesc().Format;
-	//	srvDesc.Texture2D.MipLevels = resource->GetDesc().MipLevels;
-	//	srvDesc.Texture2D.MostDetailedMip = 0;
-	//	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-
-	//	*descriptorHeapIndex = descriptorHeap->AllocateDescriptor(cpuHandle, *descriptorHeapIndex);
-	//	device->CreateShaderResourceView(resource, &srvDesc, *cpuHandle);
-	//	*gpuHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(descriptorHeap->GetHeap()->GetGPUDescriptorHandleForHeapStart(),
-	//		*descriptorHeapIndex, descriptorHeap->DescriptorSize());
-	//};
-
-	// Loads a DDS texture and issues upload on the commandlist. 
-	// The caller is expected to execute the commandList.
-
 private:
 
 	static inline void LoadDDSTexture(
