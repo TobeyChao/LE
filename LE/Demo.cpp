@@ -6,6 +6,13 @@
 
 #include "GeometryGenerator.h"
 
+#include "../3rdParty/Assimp/include/assimp/Importer.hpp"
+#include "../3rdParty/Assimp/include/assimp/PostProcess.h"
+#include "../3rdParty/Assimp/include/assimp/Scene.h"
+
+#pragma comment (lib, "../3rdParty/assimp/lib/assimp-vc142-mtd.lib")
+
+
 bool show_demo_window = false;
 bool show_another_window = false;
 bool show_wireframe = false;
@@ -23,6 +30,10 @@ Demo::~Demo()
 
 void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 {
+	SetDllDirectory(L"../3rdParty/Assimp/lib");
+
+	auto lib = ::LoadLibrary(L"assimp-vc142-mtd.dll");
+
 	D3D12App::Initialize(hwnd, clientWidth, clientHeight);
 
 	mWaves = std::make_unique<Waves>(128, 128, 1.0f, 0.03f, 4.0f, 0.2f);
