@@ -282,7 +282,7 @@ D3D12_CPU_DESCRIPTOR_HANDLE D3D12App::CurrentBackBufferView() const
 
 D3D12_CPU_DESCRIPTOR_HANDLE D3D12App::DepthStencilView() const
 {
-	return mDsvHeap->pDH->GetCPUDescriptorHandleForHeapStart();
+	return mDsvHeap->hCPU(0);
 }
 
 void D3D12App::LogAdapters()
@@ -392,23 +392,19 @@ void D3D12App::CreateDescriptorHeap()
 	mDsvHeap = std::make_unique<CDescriptorHeapWrapper>();
 	ThrowIfFailed(mDsvHeap->Create(mD3D12Device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1, false));
 
-	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc;
-	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	srvHeapDesc.NodeMask = 0;
-	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	srvHeapDesc.NumDescriptors = 1;
-	ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(mSrvHeap.GetAddressOf())));
+	mSrvHeap = std::make_unique<CDescriptorHeapWrapper>();
+	ThrowIfFailed(mSrvHeap->Create(mD3D12Device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1, true));
 }
 
 void D3D12App::CreateRenderResource()
 {
 	// 创建渲染目标视图
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(mRtvHeap->pDH->GetCPUDescriptorHandleForHeapStart());
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(mRtvHeap->hCPU(0));
 	for (UINT i = 0; i < SwapChainBufferCount; i++)
 	{
 		ThrowIfFailed(mSwapChain->GetBuffer(i, IID_PPV_ARGS(mSwapChainBuffer[i].GetAddressOf())));
 		mD3D12Device->CreateRenderTargetView(mSwapChainBuffer[i].Get(), nullptr, rtvHeapHandle);
-		rtvHeapHandle.Offset(1, mRtvHeap->HandleIncrementSize);
+		rtvHeapHandle.Offset(1, mRtvHeap->GetHandleIncrementSize());
 	}
 
 	// 创建深度/模板缓冲区及其视图

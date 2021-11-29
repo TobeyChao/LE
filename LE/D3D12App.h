@@ -88,7 +88,8 @@ protected:
 	int mCurrentBackBuffer = 0;
 	std::unique_ptr<CDescriptorHeapWrapper> mRtvHeap;
 	std::unique_ptr<CDescriptorHeapWrapper> mDsvHeap;
-	ComPtr<ID3D12DescriptorHeap> mSrvHeap;
+	//ComPtr<ID3D12DescriptorHeap> mSrvHeap;
+	std::unique_ptr<CDescriptorHeapWrapper> mSrvHeap;
 	ComPtr<ID3D12Resource> mSwapChainBuffer[SwapChainBufferCount];
 	DXGI_FORMAT mDepthStencilFormat;
 	ComPtr<ID3D12Resource> mDepthStencilBuffer;

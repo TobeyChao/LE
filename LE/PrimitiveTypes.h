@@ -16,17 +16,6 @@ public:
 			Position(x, y, z)
 		{}
 		DirectX::XMFLOAT3 Position;
-		static const bool hasPos = true;
-		static const bool hasTex = false;
-		static const bool hasNor = false;
-		static const bool hasCol = false;
-		static const bool hasTan = false;
-
-		static const unsigned PosStartByte = 0;
-		static const unsigned TexStartByte = 0;
-		static const unsigned NorStartByte = 0;
-		static const unsigned ColStartByte = 0;
-		static const unsigned TanStartByte = 0;
 	};
 
 	struct PosTexVertex
@@ -43,17 +32,6 @@ public:
 		{}
 		DirectX::XMFLOAT3 Position;
 		DirectX::XMFLOAT2 TexCoord;
-		static const bool hasPos = true;
-		static const bool hasTex = true;
-		static const bool hasNor = false;
-		static const bool hasCol = false;
-		static const bool hasTan = false;
-
-		static const unsigned PosStartByte = 0;
-		static const unsigned TexStartByte = sizeof(DirectX::XMFLOAT3);
-		static const unsigned NorStartByte = 0;
-		static const unsigned ColStartByte = 0;
-		static const unsigned TanStartByte = 0;
 	};
 
 	struct PosColVertex
@@ -75,17 +53,6 @@ public:
 		{}
 		DirectX::XMFLOAT3 Position;
 		DirectX::XMFLOAT4 Color;
-		static const bool hasPos = true;
-		static const bool hasTex = false;
-		static const bool hasNor = false;
-		static const bool hasCol = true;
-		static const bool hasTan = false;
-
-		static const unsigned PosStartByte = 0;
-		static const unsigned TexStartByte = 0;
-		static const unsigned NorStartByte = 0;
-		static const unsigned ColStartByte = sizeof(DirectX::XMFLOAT3);
-		static const unsigned TanStartByte = 0;
 	};
 
 	struct PosTexColVertex
@@ -106,17 +73,6 @@ public:
 		DirectX::XMFLOAT3 Position;
 		DirectX::XMFLOAT2 TexCoord;
 		DirectX::XMFLOAT4 Color;
-		static const bool hasPos = true;
-		static const bool hasTex = true;
-		static const bool hasNor = false;
-		static const bool hasCol = true;
-		static const bool hasTan = false;
-
-		static const unsigned PosStartByte = 0;
-		static const unsigned TexStartByte = sizeof(DirectX::XMFLOAT3);
-		static const unsigned NorStartByte = 0;
-		static const unsigned ColStartByte = sizeof(DirectX::XMFLOAT3) + sizeof(DirectX::XMFLOAT2);
-		static const unsigned TanStartByte = 0;
 	};
 
 	struct PosTexNorVertex
@@ -133,17 +89,6 @@ public:
 		DirectX::XMFLOAT3 Position;
 		DirectX::XMFLOAT2 TexCoord;
 		DirectX::XMFLOAT3 Normal;
-		static const bool hasPos = true;
-		static const bool hasTex = true;
-		static const bool hasNor = true;
-		static const bool hasCol = false;
-		static const bool hasTan = false;
-
-		static const unsigned PosStartByte = 0;
-		static const unsigned TexStartByte = sizeof(DirectX::XMFLOAT3);
-		static const unsigned NorStartByte = sizeof(DirectX::XMFLOAT3) + sizeof(DirectX::XMFLOAT2);
-		static const unsigned ColStartByte = 0;
-		static const unsigned TanStartByte = 0;
 	};
 
 	struct PosNorColVertex
@@ -160,17 +105,6 @@ public:
 		DirectX::XMFLOAT3 Position;
 		DirectX::XMFLOAT3 Normal;
 		DirectX::XMFLOAT4 Color;
-		static const bool hasPos = true;
-		static const bool hasTex = false;
-		static const bool hasNor = true;
-		static const bool hasCol = true;
-		static const bool hasTan = false;
-
-		static const unsigned PosStartByte = 0;
-		static const unsigned TexStartByte = 0;
-		static const unsigned NorStartByte = sizeof(DirectX::XMFLOAT3);
-		static const unsigned ColStartByte = sizeof(DirectX::XMFLOAT3) + sizeof(DirectX::XMFLOAT3);
-		static const unsigned TanStartByte = 0;
 	};
 
 	struct PosTexNorColVertex
@@ -190,17 +124,6 @@ public:
 		DirectX::XMFLOAT2 TexCoord;
 		DirectX::XMFLOAT3 Normal;
 		DirectX::XMFLOAT4 Color;
-		static const bool hasPos = true;
-		static const bool hasTex = true;
-		static const bool hasNor = true;
-		static const bool hasCol = true;
-		static const bool hasTan = false;
-
-		static const unsigned PosStartByte = 0;
-		static const unsigned TexStartByte = sizeof(DirectX::XMFLOAT3);
-		static const unsigned NorStartByte = sizeof(DirectX::XMFLOAT3) + sizeof(DirectX::XMFLOAT2);
-		static const unsigned ColStartByte = sizeof(DirectX::XMFLOAT3) + sizeof(DirectX::XMFLOAT2) + sizeof(DirectX::XMFLOAT3);
-		static const unsigned TanStartByte = 0;
 	};
 
 	struct PosNorTanTexColVertex
@@ -227,18 +150,6 @@ public:
 		DirectX::XMFLOAT3 TangentU;
 		DirectX::XMFLOAT2 TexCoord;
 		DirectX::XMFLOAT4 Color;
-
-		static const bool hasPos = true;
-		static const bool hasTex = true;
-		static const bool hasNor = true;
-		static const bool hasCol = true;
-		static const bool hasTan = true;
-
-		static const unsigned PosStartByte = 0;
-		static const unsigned NorStartByte = sizeof(DirectX::XMFLOAT3);
-		static const unsigned TanStartByte = sizeof(DirectX::XMFLOAT3) + sizeof(DirectX::XMFLOAT3);
-		static const unsigned TexStartByte = sizeof(DirectX::XMFLOAT3) + sizeof(DirectX::XMFLOAT3) + sizeof(DirectX::XMFLOAT3);
-		static const unsigned ColStartByte = sizeof(DirectX::XMFLOAT3) + sizeof(DirectX::XMFLOAT3) + sizeof(DirectX::XMFLOAT3) + sizeof(DirectX::XMFLOAT2);
 	};
 
 	struct Vertex

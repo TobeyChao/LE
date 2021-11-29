@@ -54,9 +54,9 @@ void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 	// Setup Platform/Renderer bindings
 	ImGui_ImplWin32_Init(hwnd);
 	ImGui_ImplDX12_Init(mD3D12Device.Get(), gNumFrameResources,
-		DXGI_FORMAT_R8G8B8A8_UNORM, mSrvHeap.Get(),
-		mSrvHeap->GetCPUDescriptorHandleForHeapStart(),
-		mSrvHeap->GetGPUDescriptorHandleForHeapStart());
+		DXGI_FORMAT_R8G8B8A8_UNORM, mSrvHeap->RawDH(),
+		mSrvHeap->hCPU(0),
+		mSrvHeap->hGPU(0));
 
 	// Load Fonts
 	// - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
@@ -220,7 +220,7 @@ void Demo::Draw()
 	mCommandList->SetPipelineState(mPSOs["transparent"].Get());
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Transparent]);
 
-	ID3D12DescriptorHeap* descriptorHeapsSrv[] = { mSrvHeap.Get() };
+	ID3D12DescriptorHeap* descriptorHeapsSrv[] = { mSrvHeap->RawDH() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeapsSrv), descriptorHeapsSrv);
 	ImGui::Render();
 	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
