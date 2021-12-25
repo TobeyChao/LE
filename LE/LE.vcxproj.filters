@@ -86,9 +86,6 @@
     <ClInclude Include="FrameResource.h">
       <Filter>App</Filter>
     </ClInclude>
-    <ClInclude Include="Waves.h">
-      <Filter>App</Filter>
-    </ClInclude>
     <ClInclude Include="WICTextureLoader12.h">
       <Filter>Common</Filter>
     </ClInclude>
@@ -143,9 +140,6 @@
       <Filter>Common</Filter>
     </ClCompile>
     <ClCompile Include="FrameResource.cpp">
-      <Filter>App</Filter>
-    </ClCompile>
-    <ClCompile Include="Waves.cpp">
       <Filter>App</Filter>
     </ClCompile>
     <ClCompile Include="WICTextureLoader12.cpp">

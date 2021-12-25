@@ -5,7 +5,6 @@
 #include "PrimitiveTypes.h"
 #include "D3D12InputLayouts.h"
 #include "MeshGeometry.h"
-#include "Waves.h"
 #include "Camera.h"
 #include <DirectXColors.h>
 
@@ -78,11 +77,9 @@ public:
 
 	void ProcessInput();
 	void UpdateCamera();
-	void AnimateMaterials();
 	void UpdateObjectCBs();
 	void UpdateMainPassCB();
 	void UpdateMaterialCB();
-	void UpdateWaves();
 
 	void CalculateFrameStats();
 
@@ -91,7 +88,6 @@ public:
 	void BuildRootSignature();
 	void BuildShadersAndInputLayout();
 	void BuildLandGeometry();
-	void BuildWaterGeometry();
 	void BuildRenderItems();
 	void BuildFrameResources();
 	void BuildDescriptorHeaps();
@@ -134,13 +130,10 @@ private:
 	std::unordered_map<std::string, std::unique_ptr<Texture>> mTextures;
 	std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
 
-	RenderItem* mWavesRitem = nullptr;
 	// List of all the render items.
 	std::vector<std::unique_ptr<RenderItem>> mAllRitems;
 	// Render items divided by PSO.
 	std::vector<RenderItem*> mRitemLayer[(int)RenderLayer::Count];
-
-	std::unique_ptr<Waves> mWaves;
 
 	UINT mPassCbvOffset = 0;
 	PassConstants mMainPassCB;

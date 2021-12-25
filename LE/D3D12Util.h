@@ -63,7 +63,9 @@ public:
 struct Material
 {
 	std::string Name;
+	// 材质在静态缓冲区里的索引
 	int MatCBIndex = -1;
+	// 材质引用的SRV在SRVHeap里的索引
 	int DiffuseSrvHeapIndex = -1;
 	int NumFramesDirty = gNumFrameResources;
 	DirectX::XMFLOAT4 DiffuseAlbedo = { 1.0f, 1.0f, 1.0f, 1.0f };

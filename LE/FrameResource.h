@@ -36,7 +36,7 @@ struct PassConstants
 
 struct FrameResource
 {
-	FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount, UINT waveCount, UINT materialeCount);
+	FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount, UINT materialeCount);
 	FrameResource(const FrameResource& rhs) = delete;
 	FrameResource& operator=(const FrameResource& rhs) = delete;
 	~FrameResource();
@@ -49,7 +49,6 @@ struct FrameResource
 	// that reference it.  So each frame needs their own cbuffers.
 	std::unique_ptr<UploadBuffer<PassConstants>> PassCB = nullptr;
 	std::unique_ptr<UploadBuffer<ObjectConstants>> ObjectCB = nullptr;
-	std::unique_ptr<UploadBuffer<PrimitiveTypes::PosTexNorColVertex>> WavesVB = nullptr;
 	std::unique_ptr<UploadBuffer<MaterialConstants>> MaterialCB = nullptr;
 	// Fence value to mark commands up to this fence point.  This lets us
 	// check if these frame resources are still in use by the GPU.

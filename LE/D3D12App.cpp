@@ -11,12 +11,14 @@ D3D12App::D3D12App()
 	mDepthStencilFormat(DXGI_FORMAT_D24_UNORM_S8_UINT),
 	mDXGIFormat(DXGI_FORMAT_R8G8B8A8_UNORM)
 {
+	CoInitialize(NULL);
 }
 
 D3D12App::~D3D12App()
 {
 	if (mD3D12Device)
 		FlushCommandQueue();
+	CoUninitialize();
 }
 
 void D3D12App::Initialize(HWND hwnd, int clientWidth, int clientHeight)

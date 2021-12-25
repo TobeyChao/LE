@@ -36,8 +36,6 @@ void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 
 	D3D12App::Initialize(hwnd, clientWidth, clientHeight);
 
-	mWaves = std::make_unique<Waves>(128, 128, 1.0f, 0.03f, 4.0f, 0.2f);
-
 	mCameras["MainCamera"] = std::make_unique<Camera>();
 
 	// Setup Dear ImGui context
@@ -82,16 +80,27 @@ void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 
 	ThrowIfFailed(mCommandList->Reset(mCommandAllocator.Get(), nullptr));
 
+	// 加载图片资源
 	LoadTextures();
-	BuildMaterials();
-	BuildRootSignature();
-	BuildShadersAndInputLayout();
+	// 创建几何体
 	BuildLandGeometry();
-	BuildWaterGeometry();
+	// 创建材质
+	BuildMaterials();
+	// 创建着色器和输入布局
+	BuildShadersAndInputLayout();
+	// 根据着色器创建根描述符
+	BuildRootSignature();
+
+	// 创建渲染项
 	BuildRenderItems();
+	// 创建帧资源
 	BuildFrameResources();
+
+	// 创建描述符堆用于存储SRV
 	BuildDescriptorHeaps();
 	BuildShaderResourceViews();
+
+	// 流水线状态
 	BuildPSO();
 
 	// Execute the initialization commands.
@@ -129,10 +138,8 @@ void Demo::Update()
 		CloseHandle(eventHandle);
 	}
 
-	AnimateMaterials();
 	UpdateObjectCBs();
 	UpdateMainPassCB();
-	UpdateWaves();
 	UpdateMaterialCB();
 }
 
@@ -310,30 +317,6 @@ void Demo::UpdateCamera()
 	XMStoreFloat4x4(&mView, view);
 }
 
-void Demo::AnimateMaterials()
-{
-	// Scroll the water material texture coordinates.
-	auto waterMat = mMaterials["water"].get();
-
-	float& tu = waterMat->MatTransform(3, 0);
-	float& tv = waterMat->MatTransform(3, 1);
-
-	tu += 0.1f * GameTimer::GetInstance().DeltaTime();
-	tv += 0.02f * GameTimer::GetInstance().DeltaTime();
-
-	if (tu >= 1.0f)
-		tu -= 1.0f;
-
-	if (tv >= 1.0f)
-		tv -= 1.0f;
-
-	waterMat->MatTransform(3, 0) = tu;
-	waterMat->MatTransform(3, 1) = tv;
-
-	// Material has changed, so need to update cbuffer.
-	waterMat->NumFramesDirty = gNumFrameResources;
-}
-
 void Demo::UpdateObjectCBs()
 {
 	// Update the constant buffer with the latest worldViewProj matrix.
@@ -387,7 +370,7 @@ void Demo::UpdateMainPassCB()
 	XMVECTOR lightDir = -MathHelper::SphericalToCartesian(1.0f, mSunTheta, mSunPhi);
 
 	XMStoreFloat3(&mMainPassCB.Lights[0].Direction, lightDir);
-	mMainPassCB.Lights[0].Strength = { 1.0f, 1.0f, 0.9f };
+	mMainPassCB.Lights[0].Strength = { 1.0f, 1.0f, 1.0f };
 
 	currPassCB->CopyData(0, mMainPassCB);
 }
@@ -414,44 +397,6 @@ void Demo::UpdateMaterialCB()
 			mat->NumFramesDirty--;
 		}
 	}
-}
-
-void Demo::UpdateWaves()
-{
-	// Every quarter second, generate a random wave.
-	static float t_base = 0.0f;
-	if ((GameTimer::GetInstancePtr()->TotalTime() - t_base) >= 0.25f)
-	{
-		t_base += 0.25f;
-
-		int i = MathHelper::Rand(4, mWaves->RowCount() - 5);
-		int j = MathHelper::Rand(4, mWaves->ColumnCount() - 5);
-
-		float r = MathHelper::RandF(0.2f, 0.5f);
-
-		mWaves->Disturb(i, j, r);
-	}
-
-	// Update the wave simulation.
-	mWaves->Update(GameTimer::GetInstancePtr()->DeltaTime());
-
-	// Update the wave vertex buffer with the new solution.
-	auto currWavesVB = mCurrFrameResource->WavesVB.get();
-	for (int i = 0; i < mWaves->VertexCount(); ++i)
-	{
-		PrimitiveTypes::PosTexNorColVertex v;
-
-		v.Position = mWaves->Position(i);
-		v.TexCoord.x = 0.5f + v.Position.x / mWaves->Width();
-		v.TexCoord.y = 0.5f - v.Position.z / mWaves->Depth();
-		v.Normal = mWaves->Normal(i);
-		v.Color = XMFLOAT4(DirectX::Colors::Blue);
-
-		currWavesVB->CopyData(i, v);
-	}
-
-	// Set the dynamic VB of the wave renderitem to the current frame VB.
-	mWavesRitem->Geo->VertexBufferGPU = currWavesVB->Resource();
 }
 
 void Demo::CalculateFrameStats()
@@ -486,43 +431,43 @@ void Demo::CalculateFrameStats()
 
 void Demo::LoadTextures()
 {
-	auto woodCrateTex = std::make_unique<Texture>();
-	woodCrateTex->Name = "grass";
-	woodCrateTex->Filename = L"Textures/grass.dds";
-	D3D12Util::LoadTexture(mD3D12Device.Get(), mCommandList.Get(), woodCrateTex->Filename.c_str(),
-		woodCrateTex->Resource.GetAddressOf(), woodCrateTex->UploadHeap.GetAddressOf());
-	mTextures[woodCrateTex->Name] = std::move(woodCrateTex);
+	auto gridTex = std::make_unique<Texture>();
+	gridTex->Name = "tex_grid";
+	gridTex->Filename = L"Textures/tex_grid.png";
+	D3D12Util::LoadTexture(mD3D12Device.Get(), mCommandList.Get(), gridTex->Filename.c_str(),
+		gridTex->Resource.GetAddressOf(), gridTex->UploadHeap.GetAddressOf());
+	mTextures[gridTex->Name] = std::move(gridTex);
 
-	auto waterTex = std::make_unique<Texture>();
-	waterTex->Name = "water";
-	waterTex->Filename = L"Textures/water1.dds";
-	D3D12Util::LoadTexture(mD3D12Device.Get(), mCommandList.Get(), waterTex->Filename.c_str(),
-		waterTex->Resource.GetAddressOf(), waterTex->UploadHeap.GetAddressOf());
-	mTextures[waterTex->Name] = std::move(waterTex);
+	auto woodTex = std::make_unique<Texture>();
+	woodTex->Name = "WoodCrate01";
+	woodTex->Filename = L"Textures/WoodCrate01.dds";
+	D3D12Util::LoadTexture(mD3D12Device.Get(), mCommandList.Get(), woodTex->Filename.c_str(),
+		woodTex->Resource.GetAddressOf(), woodTex->UploadHeap.GetAddressOf());
+	mTextures[woodTex->Name] = std::move(woodTex);
 }
 
 void Demo::BuildMaterials()
 {
-	auto grass = std::make_unique<Material>();
-	grass->Name = "grass";
-	grass->MatCBIndex = 0;
-	grass->DiffuseSrvHeapIndex = 0;
-	grass->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-	grass->FresnelR0 = XMFLOAT3{ 0.01f, 0.01f, 0.01f };
-	grass->Roughness = 0.125f;
-	XMStoreFloat4x4(&(grass->MatTransform), XMMatrixScaling(5.0f, 5.0f, 1.0f));
+	auto floor = std::make_unique<Material>();
+	floor->Name = "floor";
+	floor->MatCBIndex = 0;
+	floor->DiffuseSrvHeapIndex = 0;
+	floor->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	floor->FresnelR0 = XMFLOAT3{ 0.01f, 0.01f, 0.01f };
+	floor->Roughness = 0.125f;
+	XMStoreFloat4x4(&(floor->MatTransform), XMMatrixScaling(2.0f, 2.0f, 1.0f));
 
-	auto water = std::make_unique<Material>();
-	water->Name = "water";
-	water->MatCBIndex = 1;
-	water->DiffuseSrvHeapIndex = 1;
-	water->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 0.5f);
-	water->FresnelR0 = XMFLOAT3(0.2f, 0.2f, 0.2f);
-	water->Roughness = 0.0f;
-	XMStoreFloat4x4(&water->MatTransform, XMMatrixScaling(5.0f, 5.0f, 1.0f));
+	auto wood = std::make_unique<Material>();
+	wood->Name = "wood";
+	wood->MatCBIndex = 1;
+	wood->DiffuseSrvHeapIndex = 1;
+	wood->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 0.5f);
+	wood->FresnelR0 = XMFLOAT3(0.2f, 0.2f, 0.2f);
+	wood->Roughness = 0.0f;
+	XMStoreFloat4x4(&wood->MatTransform, XMMatrixScaling(1.0f, 1.0f, 1.0f));
 
-	mMaterials["grass"] = std::move(grass);
-	mMaterials["water"] = std::move(water);
+	mMaterials["floor"] = std::move(floor);
+	mMaterials["wood"] = std::move(wood);
 }
 
 void Demo::BuildRootSignature()
@@ -532,7 +477,6 @@ void Demo::BuildRootSignature()
 
 	CD3DX12_ROOT_PARAMETER slotRootParameter[4];
 	slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
-	//slotRootParameter[1].InitAsDescriptorTable(1, &cbvTable1);
 	slotRootParameter[1].InitAsConstantBufferView(0);
 	slotRootParameter[2].InitAsConstantBufferView(1);
 	slotRootParameter[3].InitAsConstantBufferView(2);
@@ -567,29 +511,22 @@ void Demo::BuildShadersAndInputLayout()
 
 	mInputLayout.clear();
 	mInputLayout.insert(mInputLayout.end(), std::begin(InputLayouts::inputLayoutPosTexNorCol), std::end(InputLayouts::inputLayoutPosTexNorCol));
-	//{
-	//	{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-	//	{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
-	//};
 }
 
 void Demo::BuildLandGeometry()
 {
+#pragma region Floor
 	GeometryGenerator geoGen;
-	//GeometryGenerator::MeshData model = geoGen.CreateGeosphere(1.0f, 3);
-	//GeometryGenerator::MeshData model = geoGen.CreateCylinder(1.0f, 1.0f, 1.0f, 30, 1);
-	//GeometryGenerator::MeshData model = geoGen.CreateBox(1.0f, 1.0f, 1.0f, 0);
-	//GeometryGenerator::MeshData model = geoGen.CreateSphere(1.0f, 20, 20);
-	GeometryGenerator::MeshData model = geoGen.CreateGrid(128.0f, 128.0f, 32, 32);
+	GeometryGenerator::MeshData model = geoGen.CreateGrid(64.0f, 64.0f, 4, 4);
 
 	std::vector<PrimitiveTypes::PosTexNorColVertex> vertices(model.Vertices.size());
 
 	for (size_t i = 0; i < model.Vertices.size(); ++i)
 	{
 		auto& p = model.Vertices[i];
-		vertices[i].Position = { p.Position.x, GetHillsHeight(p.Position.x, p.Position.z), p.Position.z };
+		vertices[i].Position = { p.Position.x, p.Position.y/*GetHillsHeight(p.Position.x, p.Position.z)*/, p.Position.z };
 		vertices[i].TexCoord = p.TexC;
-		vertices[i].Normal = GetHillsNormal(p.Position.x, p.Position.z);
+		vertices[i].Normal = p.Normal/*GetHillsNormal(p.Position.x, p.Position.z)*/;
 		vertices[i].Color = XMFLOAT4(DirectX::Colors::DarkGreen);
 	}
 
@@ -599,90 +536,83 @@ void Demo::BuildLandGeometry()
 	const UINT vbByteSize = (UINT)vertices.size() * sizeof(PrimitiveTypes::PosTexNorColVertex);
 	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
 
+	auto gridGeo = std::make_unique<MeshGeometry>();
+	gridGeo->Name = "gridGeo";
+
+	ThrowIfFailed(D3DCreateBlob(vbByteSize, &gridGeo->VertexBufferCPU));
+	CopyMemory(gridGeo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+
+	ThrowIfFailed(D3DCreateBlob(ibByteSize, &gridGeo->IndexBufferCPU));
+	CopyMemory(gridGeo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+
+	gridGeo->VertexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
+		mCommandList.Get(), vertices.data(), vbByteSize, gridGeo->VertexBufferUploader);
+
+	gridGeo->IndexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
+		mCommandList.Get(), indices.data(), ibByteSize, gridGeo->IndexBufferUploader);
+
+	gridGeo->VertexByteStride = sizeof(PrimitiveTypes::PosTexNorColVertex);
+	gridGeo->VertexBufferByteSize = vbByteSize;
+	gridGeo->IndexFormat = DXGI_FORMAT_R16_UINT;
+	gridGeo->IndexBufferByteSize = ibByteSize;
+
+	SubmeshGeometry submesh;
+	submesh.IndexCount = (UINT)indices.size();
+	submesh.StartIndexLocation = 0;
+	submesh.BaseVertexLocation = 0;
+
+	gridGeo->DrawArgs["grid"] = submesh;
+#pragma endregion
+
+#pragma region Box
+	GeometryGenerator::MeshData boxModel = geoGen.CreateBox(1.0f, 1.0f, 1.0f, 0);
+	std::vector<PrimitiveTypes::PosTexNorColVertex> boxVertices(boxModel.Vertices.size());
+
+	for (size_t i = 0; i < boxModel.Vertices.size(); ++i)
+	{
+		auto& p = boxModel.Vertices[i];
+		boxVertices[i].Position = { p.Position.x, p.Position.y, p.Position.z };
+		boxVertices[i].TexCoord = p.TexC;
+		boxVertices[i].Normal = p.Normal;
+		boxVertices[i].Color = XMFLOAT4(DirectX::Colors::DarkGreen);
+	}
+
+	std::vector<std::uint16_t> boxIndices;
+	boxIndices.insert(boxIndices.end(), std::begin(boxModel.GetIndices16()), std::end(boxModel.GetIndices16()));
+
+	const UINT vbByteSizeBox = (UINT)boxVertices.size() * sizeof(PrimitiveTypes::PosTexNorColVertex);
+	const UINT ibByteSizeBox = (UINT)boxIndices.size() * sizeof(std::uint16_t);
+
 	auto boxGeo = std::make_unique<MeshGeometry>();
 	boxGeo->Name = "boxGeo";
 
-	ThrowIfFailed(D3DCreateBlob(vbByteSize, &boxGeo->VertexBufferCPU));
-	CopyMemory(boxGeo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+	ThrowIfFailed(D3DCreateBlob(vbByteSizeBox, &boxGeo->VertexBufferCPU));
+	CopyMemory(boxGeo->VertexBufferCPU->GetBufferPointer(), boxVertices.data(), vbByteSizeBox);
 
-	ThrowIfFailed(D3DCreateBlob(ibByteSize, &boxGeo->IndexBufferCPU));
-	CopyMemory(boxGeo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+	ThrowIfFailed(D3DCreateBlob(ibByteSizeBox, &boxGeo->IndexBufferCPU));
+	CopyMemory(boxGeo->IndexBufferCPU->GetBufferPointer(), boxIndices.data(), ibByteSizeBox);
 
 	boxGeo->VertexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
-		mCommandList.Get(), vertices.data(), vbByteSize, boxGeo->VertexBufferUploader);
+		mCommandList.Get(), boxVertices.data(), vbByteSizeBox, boxGeo->VertexBufferUploader);
 
 	boxGeo->IndexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
-		mCommandList.Get(), indices.data(), ibByteSize, boxGeo->IndexBufferUploader);
+		mCommandList.Get(), boxIndices.data(), ibByteSizeBox, boxGeo->IndexBufferUploader);
 
 	boxGeo->VertexByteStride = sizeof(PrimitiveTypes::PosTexNorColVertex);
-	boxGeo->VertexBufferByteSize = vbByteSize;
+	boxGeo->VertexBufferByteSize = vbByteSizeBox;
 	boxGeo->IndexFormat = DXGI_FORMAT_R16_UINT;
-	boxGeo->IndexBufferByteSize = ibByteSize;
+	boxGeo->IndexBufferByteSize = ibByteSizeBox;
 
-	SubmeshGeometry submesh;
-	submesh.IndexCount = (UINT)indices.size();
-	submesh.StartIndexLocation = 0;
-	submesh.BaseVertexLocation = 0;
+	SubmeshGeometry submeshBox;
+	submeshBox.IndexCount = (UINT)boxIndices.size();
+	submeshBox.StartIndexLocation = 0;
+	submeshBox.BaseVertexLocation = 0;
 
-	boxGeo->DrawArgs["box"] = submesh;
+	boxGeo->DrawArgs["box"] = submeshBox;
+#pragma endregion
 
+	mGeometries[gridGeo->Name] = std::move(gridGeo);
 	mGeometries[boxGeo->Name] = std::move(boxGeo);
-}
-
-void Demo::BuildWaterGeometry()
-{
-	std::vector<std::uint16_t> indices(3 * mWaves->TriangleCount()); // 3 indices per face
-	assert(mWaves->VertexCount() < 0x0000ffff);
-
-	// Iterate over each quad.
-	int m = mWaves->RowCount();
-	int n = mWaves->ColumnCount();
-	int k = 0;
-	for (int i = 0; i < m - 1; ++i)
-	{
-		for (int j = 0; j < n - 1; ++j)
-		{
-			indices[k] = i * n + j;
-			indices[k + 1] = i * n + j + 1;
-			indices[k + 2] = (i + 1) * n + j;
-
-			indices[k + 3] = (i + 1) * n + j;
-			indices[k + 4] = i * n + j + 1;
-			indices[k + 5] = (i + 1) * n + j + 1;
-
-			k += 6; // next quad
-		}
-	}
-
-	UINT vbByteSize = mWaves->VertexCount() * sizeof(PrimitiveTypes::PosTexNorColVertex);
-	UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
-
-	auto geo = std::make_unique<MeshGeometry>();
-	geo->Name = "waterGeo";
-
-	// Set dynamically.
-	geo->VertexBufferCPU = nullptr;
-	geo->VertexBufferGPU = nullptr;
-
-	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
-	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
-
-	geo->IndexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
-		mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
-
-	geo->VertexByteStride = sizeof(PrimitiveTypes::PosTexNorColVertex);
-	geo->VertexBufferByteSize = vbByteSize;
-	geo->IndexFormat = DXGI_FORMAT_R16_UINT;
-	geo->IndexBufferByteSize = ibByteSize;
-
-	SubmeshGeometry submesh;
-	submesh.IndexCount = (UINT)indices.size();
-	submesh.StartIndexLocation = 0;
-	submesh.BaseVertexLocation = 0;
-
-	geo->DrawArgs["grid"] = submesh;
-
-	mGeometries["waterGeo"] = std::move(geo);
 }
 
 void Demo::BuildFrameResources()
@@ -690,7 +620,7 @@ void Demo::BuildFrameResources()
 	for (int i = 0; i < gNumFrameResources; ++i)
 	{
 		mFrameResources.push_back(std::make_unique<FrameResource>(mD3D12Device.Get(),
-			1, (UINT)mAllRitems.size(), mWaves->VertexCount(), (UINT)mMaterials.size()));
+			1, (UINT)mAllRitems.size(), (UINT)mMaterials.size()));
 	}
 }
 
@@ -713,7 +643,20 @@ void Demo::BuildShaderResourceViews()
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 
-	auto woodCrateTex = mTextures["grass"]->Resource;
+	auto floorTex = mTextures["tex_grid"]->Resource;
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Format = floorTex->GetDesc().Format;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MostDetailedMip = 0;
+	srvDesc.Texture2D.MipLevels = floorTex->GetDesc().MipLevels;
+	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+
+	mD3D12Device->CreateShaderResourceView(floorTex.Get(), &srvDesc, hDescriptor);
+
+	hDescriptor.Offset(1, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+
+	srvDesc = {};
+	auto woodCrateTex = mTextures["WoodCrate01"]->Resource;
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.Format = woodCrateTex->GetDesc().Format;
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
@@ -722,40 +665,30 @@ void Demo::BuildShaderResourceViews()
 	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
 
 	mD3D12Device->CreateShaderResourceView(woodCrateTex.Get(), &srvDesc, hDescriptor);
-
-	hDescriptor.Offset(1, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-
-	srvDesc = {};
-	auto waterTex = mTextures["water"]->Resource;
-	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srvDesc.Format = waterTex->GetDesc().Format;
-	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srvDesc.Texture2D.MostDetailedMip = 0;
-	srvDesc.Texture2D.MipLevels = waterTex->GetDesc().MipLevels;
-	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-
-	mD3D12Device->CreateShaderResourceView(waterTex.Get(), &srvDesc, hDescriptor);
 }
 
 void Demo::BuildRenderItems()
 {
-	auto wavesRitem = std::make_unique<RenderItem>();
-	wavesRitem->World = MathHelper::Identity4x4();
-	wavesRitem->ObjCBIndex = 0;
-	wavesRitem->Mat = mMaterials["water"].get();
-	wavesRitem->Geo = mGeometries["waterGeo"].get();
-	wavesRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-	wavesRitem->IndexCount = wavesRitem->Geo->DrawArgs["grid"].IndexCount;
-	wavesRitem->StartIndexLocation = wavesRitem->Geo->DrawArgs["grid"].StartIndexLocation;
-	wavesRitem->BaseVertexLocation = wavesRitem->Geo->DrawArgs["grid"].BaseVertexLocation;
+	auto gridRitem = std::make_unique<RenderItem>();
+	gridRitem->World = MathHelper::Identity4x4();
+	gridRitem->ObjCBIndex = 0;
+	gridRitem->Mat = mMaterials["floor"].get();
+	gridRitem->Geo = mGeometries["gridGeo"].get();
+	gridRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	gridRitem->IndexCount = gridRitem->Geo->DrawArgs["grid"].IndexCount;
+	gridRitem->StartIndexLocation = gridRitem->Geo->DrawArgs["grid"].StartIndexLocation;
+	gridRitem->BaseVertexLocation = gridRitem->Geo->DrawArgs["grid"].BaseVertexLocation;
 
-	mWavesRitem = wavesRitem.get();
-	mRitemLayer[(int)RenderLayer::Transparent].push_back(wavesRitem.get());
+	mRitemLayer[(int)RenderLayer::Opaque].push_back(gridRitem.get());
+
+	// All the render items are opaque.
+	mAllRitems.push_back(std::move(gridRitem));
 
 	auto boxRitem = std::make_unique<RenderItem>();
 	boxRitem->World = MathHelper::Identity4x4();
+	XMStoreFloat4x4(&(boxRitem->World), XMMatrixTranslation(0, 0.5f, 0));
 	boxRitem->ObjCBIndex = 1;
-	boxRitem->Mat = mMaterials["grass"].get();
+	boxRitem->Mat = mMaterials["wood"].get();
 	boxRitem->Geo = mGeometries["boxGeo"].get();
 	boxRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	boxRitem->IndexCount = boxRitem->Geo->DrawArgs["box"].IndexCount;
@@ -765,7 +698,6 @@ void Demo::BuildRenderItems()
 	mRitemLayer[(int)RenderLayer::Opaque].push_back(boxRitem.get());
 
 	// All the render items are opaque.
-	mAllRitems.push_back(std::move(wavesRitem));
 	mAllRitems.push_back(std::move(boxRitem));
 }
 
