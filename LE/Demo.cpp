@@ -116,7 +116,7 @@ void Demo::OnResize()
 {
 	D3D12App::OnResize();
 	// The window resized, so update the aspect ratio and recompute the projection matrix.
-	XMMATRIX P = XMMatrixPerspectiveFovLH(XM_PIDIV4, static_cast<float>(mClientWidth) / mClientHeight, 1.0f, 1000.0f);
+	XMMATRIX P = XMMatrixPerspectiveFovLH(XM_PIDIV4, static_cast<float>(mClientWidth) / mClientHeight, 0.1f, 1000.0f);
 	XMStoreFloat4x4(&mProj, P);
 }
 
@@ -140,6 +140,7 @@ void Demo::Update()
 
 	UpdateObjectCBs();
 	UpdateMainPassCB();
+	UpdateReflectedMainPassCB();
 	UpdateMaterialCB();
 }
 
@@ -216,14 +217,30 @@ void Demo::Draw()
 
 	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
 
+	UINT passCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(PassConstants));
+
 	//int passCbvIndex = mPassCbvOffset + mCurrFrameResourceIndex;
 	//auto passCbvHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
 	//passCbvHandle.Offset(passCbvIndex, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 	//mCommandList->SetGraphicsRootDescriptorTable(1, passCbvHandle);
-	mCommandList->SetGraphicsRootConstantBufferView(3, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
 
+	// 渲染不透明物体
+	mCommandList->SetGraphicsRootConstantBufferView(3, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque]);
 
+	// 渲染镜子
+	mCommandList->OMSetStencilRef(1);
+	mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Mirrors]);
+
+	// 渲染镜子里的东西
+	mCommandList->SetGraphicsRootConstantBufferView(3, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress() + 1 * passCBByteSize);
+	mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Reflected]);
+	mCommandList->SetGraphicsRootConstantBufferView(3, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
+	mCommandList->OMSetStencilRef(0);
+
+	// 渲染透明物体
 	mCommandList->SetPipelineState(mPSOs["transparent"].Get());
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Transparent]);
 
@@ -375,6 +392,21 @@ void Demo::UpdateMainPassCB()
 	currPassCB->CopyData(0, mMainPassCB);
 }
 
+void Demo::UpdateReflectedMainPassCB()
+{
+	mReflectedPassCB = mMainPassCB;
+
+	XMVECTOR mirrorPlane = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+	XMMATRIX R = XMMatrixReflect(mirrorPlane);
+	XMVECTOR lightDir = XMLoadFloat3(&mMainPassCB.Lights[0].Direction);
+	XMVECTOR reflectedLightDir = XMVector3TransformNormal(lightDir, R);
+	XMStoreFloat3(&mReflectedPassCB.Lights[0].Direction, reflectedLightDir);
+
+	// Reflected pass stored in index 1
+	auto currPassCB = mCurrFrameResource->PassCB.get();
+	currPassCB->CopyData(1, mReflectedPassCB);
+}
+
 void Demo::UpdateMaterialCB()
 {
 	auto materialCB = mCurrFrameResource->MaterialCB.get();
@@ -436,14 +468,22 @@ void Demo::LoadTextures()
 	gridTex->Filename = L"Textures/tex_grid.png";
 	D3D12Util::LoadTexture(mD3D12Device.Get(), mCommandList.Get(), gridTex->Filename.c_str(),
 		gridTex->Resource.GetAddressOf(), gridTex->UploadHeap.GetAddressOf());
-	mTextures[gridTex->Name] = std::move(gridTex);
 
 	auto woodTex = std::make_unique<Texture>();
 	woodTex->Name = "WoodCrate01";
 	woodTex->Filename = L"Textures/WoodCrate01.dds";
 	D3D12Util::LoadTexture(mD3D12Device.Get(), mCommandList.Get(), woodTex->Filename.c_str(),
 		woodTex->Resource.GetAddressOf(), woodTex->UploadHeap.GetAddressOf());
+
+	auto iceTex = std::make_unique<Texture>();
+	iceTex->Name = "ice";
+	iceTex->Filename = L"Textures/ice.dds";
+	D3D12Util::LoadTexture(mD3D12Device.Get(), mCommandList.Get(), iceTex->Filename.c_str(),
+		iceTex->Resource.GetAddressOf(), iceTex->UploadHeap.GetAddressOf());
+
+	mTextures[gridTex->Name] = std::move(gridTex);
 	mTextures[woodTex->Name] = std::move(woodTex);
+	mTextures[iceTex->Name] = std::move(iceTex);
 }
 
 void Demo::BuildMaterials()
@@ -452,22 +492,32 @@ void Demo::BuildMaterials()
 	floor->Name = "floor";
 	floor->MatCBIndex = 0;
 	floor->DiffuseSrvHeapIndex = 0;
-	floor->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	floor->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 0.8f);
 	floor->FresnelR0 = XMFLOAT3{ 0.01f, 0.01f, 0.01f };
-	floor->Roughness = 0.125f;
-	XMStoreFloat4x4(&(floor->MatTransform), XMMatrixScaling(2.0f, 2.0f, 1.0f));
+	floor->Roughness = 0.8f;
+	XMStoreFloat4x4(&(floor->MatTransform), XMMatrixScaling(2.0f, 2.0f, 1.f));
 
 	auto wood = std::make_unique<Material>();
 	wood->Name = "wood";
 	wood->MatCBIndex = 1;
 	wood->DiffuseSrvHeapIndex = 1;
-	wood->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 0.5f);
-	wood->FresnelR0 = XMFLOAT3(0.2f, 0.2f, 0.2f);
-	wood->Roughness = 0.0f;
+	wood->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	wood->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
+	wood->Roughness = 0.8f;
 	XMStoreFloat4x4(&wood->MatTransform, XMMatrixScaling(1.0f, 1.0f, 1.0f));
+
+	auto icemirror = std::make_unique<Material>();
+	icemirror->Name = "icemirror";
+	icemirror->MatCBIndex = 2;
+	icemirror->DiffuseSrvHeapIndex = 2;
+	icemirror->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 0.5f);
+	icemirror->FresnelR0 = XMFLOAT3(0.1f, 0.1f, 0.1f);
+	icemirror->Roughness = 0.5f;
+	XMStoreFloat4x4(&icemirror->MatTransform, XMMatrixScaling(1.0f, 1.0f, 1.0f));
 
 	mMaterials["floor"] = std::move(floor);
 	mMaterials["wood"] = std::move(wood);
+	mMaterials["icemirror"] = std::move(icemirror);
 }
 
 void Demo::BuildRootSignature()
@@ -515,104 +565,153 @@ void Demo::BuildShadersAndInputLayout()
 
 void Demo::BuildLandGeometry()
 {
-#pragma region Floor
 	GeometryGenerator geoGen;
-	GeometryGenerator::MeshData model = geoGen.CreateGrid(64.0f, 64.0f, 4, 4);
-
-	std::vector<PrimitiveTypes::PosTexNorColVertex> vertices(model.Vertices.size());
-
-	for (size_t i = 0; i < model.Vertices.size(); ++i)
+	// Grid
 	{
-		auto& p = model.Vertices[i];
-		vertices[i].Position = { p.Position.x, p.Position.y/*GetHillsHeight(p.Position.x, p.Position.z)*/, p.Position.z };
-		vertices[i].TexCoord = p.TexC;
-		vertices[i].Normal = p.Normal/*GetHillsNormal(p.Position.x, p.Position.z)*/;
-		vertices[i].Color = XMFLOAT4(DirectX::Colors::DarkGreen);
+		GeometryGenerator::MeshData model = geoGen.CreateGrid(64.0f, 64.0f, 4, 4);
+
+		std::vector<PrimitiveTypes::PosTexNorColVertex> vertices(model.Vertices.size());
+
+		for (size_t i = 0; i < model.Vertices.size(); ++i)
+		{
+			auto& p = model.Vertices[i];
+			vertices[i].Position = { p.Position.x, p.Position.y/*GetHillsHeight(p.Position.x, p.Position.z)*/, p.Position.z };
+			vertices[i].TexCoord = p.TexC;
+			vertices[i].Normal = p.Normal/*GetHillsNormal(p.Position.x, p.Position.z)*/;
+			vertices[i].Color = XMFLOAT4(DirectX::Colors::DarkGreen);
+		}
+
+		std::vector<std::uint16_t> indices;
+		indices.insert(indices.end(), std::begin(model.GetIndices16()), std::end(model.GetIndices16()));
+
+		const UINT vbByteSize = (UINT)vertices.size() * sizeof(PrimitiveTypes::PosTexNorColVertex);
+		const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
+
+		auto geo = std::make_unique<MeshGeometry>();
+		geo->Name = "gridGeo";
+
+		ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+		CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+
+		ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+		CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+
+		geo->VertexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
+			mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
+
+		geo->IndexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
+			mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+
+		geo->VertexByteStride = sizeof(PrimitiveTypes::PosTexNorColVertex);
+		geo->VertexBufferByteSize = vbByteSize;
+		geo->IndexFormat = DXGI_FORMAT_R16_UINT;
+		geo->IndexBufferByteSize = ibByteSize;
+
+		SubmeshGeometry submesh;
+		submesh.IndexCount = (UINT)indices.size();
+		submesh.StartIndexLocation = 0;
+		submesh.BaseVertexLocation = 0;
+
+		geo->DrawArgs["grid"] = submesh;
+		mGeometries[geo->Name] = std::move(geo);
 	}
-
-	std::vector<std::uint16_t> indices;
-	indices.insert(indices.end(), std::begin(model.GetIndices16()), std::end(model.GetIndices16()));
-
-	const UINT vbByteSize = (UINT)vertices.size() * sizeof(PrimitiveTypes::PosTexNorColVertex);
-	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
-
-	auto gridGeo = std::make_unique<MeshGeometry>();
-	gridGeo->Name = "gridGeo";
-
-	ThrowIfFailed(D3DCreateBlob(vbByteSize, &gridGeo->VertexBufferCPU));
-	CopyMemory(gridGeo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
-
-	ThrowIfFailed(D3DCreateBlob(ibByteSize, &gridGeo->IndexBufferCPU));
-	CopyMemory(gridGeo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
-
-	gridGeo->VertexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
-		mCommandList.Get(), vertices.data(), vbByteSize, gridGeo->VertexBufferUploader);
-
-	gridGeo->IndexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
-		mCommandList.Get(), indices.data(), ibByteSize, gridGeo->IndexBufferUploader);
-
-	gridGeo->VertexByteStride = sizeof(PrimitiveTypes::PosTexNorColVertex);
-	gridGeo->VertexBufferByteSize = vbByteSize;
-	gridGeo->IndexFormat = DXGI_FORMAT_R16_UINT;
-	gridGeo->IndexBufferByteSize = ibByteSize;
-
-	SubmeshGeometry submesh;
-	submesh.IndexCount = (UINT)indices.size();
-	submesh.StartIndexLocation = 0;
-	submesh.BaseVertexLocation = 0;
-
-	gridGeo->DrawArgs["grid"] = submesh;
-#pragma endregion
-
-#pragma region Box
-	GeometryGenerator::MeshData boxModel = geoGen.CreateBox(1.0f, 1.0f, 1.0f, 0);
-	std::vector<PrimitiveTypes::PosTexNorColVertex> boxVertices(boxModel.Vertices.size());
-
-	for (size_t i = 0; i < boxModel.Vertices.size(); ++i)
+	// Box
 	{
-		auto& p = boxModel.Vertices[i];
-		boxVertices[i].Position = { p.Position.x, p.Position.y, p.Position.z };
-		boxVertices[i].TexCoord = p.TexC;
-		boxVertices[i].Normal = p.Normal;
-		boxVertices[i].Color = XMFLOAT4(DirectX::Colors::DarkGreen);
+		GeometryGenerator::MeshData model = geoGen.CreateBox(1.0f, 1.0f, 1.0f, 0);
+		std::vector<PrimitiveTypes::PosTexNorColVertex> vertices(model.Vertices.size());
+
+		for (size_t i = 0; i < model.Vertices.size(); ++i)
+		{
+			auto& p = model.Vertices[i];
+			vertices[i].Position = { p.Position.x, p.Position.y, p.Position.z };
+			vertices[i].TexCoord = p.TexC;
+			vertices[i].Normal = p.Normal;
+			vertices[i].Color = XMFLOAT4(DirectX::Colors::DarkGreen);
+		}
+
+		std::vector<std::uint16_t> indices;
+		indices.insert(indices.end(), std::begin(model.GetIndices16()), std::end(model.GetIndices16()));
+
+		const UINT vbByteSize = (UINT)vertices.size() * sizeof(PrimitiveTypes::PosTexNorColVertex);
+		const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
+
+		auto geo = std::make_unique<MeshGeometry>();
+		geo->Name = "boxGeo";
+
+		ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+		CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+
+		ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+		CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+
+		geo->VertexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
+			mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
+
+		geo->IndexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
+			mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+
+		geo->VertexByteStride = sizeof(PrimitiveTypes::PosTexNorColVertex);
+		geo->VertexBufferByteSize = vbByteSize;
+		geo->IndexFormat = DXGI_FORMAT_R16_UINT;
+		geo->IndexBufferByteSize = ibByteSize;
+
+		SubmeshGeometry submeshBox;
+		submeshBox.IndexCount = (UINT)indices.size();
+		submeshBox.StartIndexLocation = 0;
+		submeshBox.BaseVertexLocation = 0;
+
+		geo->DrawArgs["box"] = submeshBox;
+		mGeometries[geo->Name] = std::move(geo);
 	}
+	// Mirror
+	{
+		GeometryGenerator::MeshData model = geoGen.CreateGrid(8.0f, 8.0f, 2, 2);
 
-	std::vector<std::uint16_t> boxIndices;
-	boxIndices.insert(boxIndices.end(), std::begin(boxModel.GetIndices16()), std::end(boxModel.GetIndices16()));
+		std::vector<PrimitiveTypes::PosTexNorColVertex> vertices(model.Vertices.size());
 
-	const UINT vbByteSizeBox = (UINT)boxVertices.size() * sizeof(PrimitiveTypes::PosTexNorColVertex);
-	const UINT ibByteSizeBox = (UINT)boxIndices.size() * sizeof(std::uint16_t);
+		for (size_t i = 0; i < model.Vertices.size(); ++i)
+		{
+			auto& p = model.Vertices[i];
+			vertices[i].Position = { p.Position.x, p.Position.y, p.Position.z };
+			vertices[i].TexCoord = p.TexC;
+			vertices[i].Normal = p.Normal;
+			vertices[i].Color = XMFLOAT4(DirectX::Colors::DarkGreen);
+		}
 
-	auto boxGeo = std::make_unique<MeshGeometry>();
-	boxGeo->Name = "boxGeo";
+		std::vector<std::uint16_t> indices;
+		indices.insert(indices.end(), std::begin(model.GetIndices16()), std::end(model.GetIndices16()));
 
-	ThrowIfFailed(D3DCreateBlob(vbByteSizeBox, &boxGeo->VertexBufferCPU));
-	CopyMemory(boxGeo->VertexBufferCPU->GetBufferPointer(), boxVertices.data(), vbByteSizeBox);
+		const UINT vbByteSize = (UINT)vertices.size() * sizeof(PrimitiveTypes::PosTexNorColVertex);
+		const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
 
-	ThrowIfFailed(D3DCreateBlob(ibByteSizeBox, &boxGeo->IndexBufferCPU));
-	CopyMemory(boxGeo->IndexBufferCPU->GetBufferPointer(), boxIndices.data(), ibByteSizeBox);
+		auto geo = std::make_unique<MeshGeometry>();
+		geo->Name = "mirrorGeo";
 
-	boxGeo->VertexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
-		mCommandList.Get(), boxVertices.data(), vbByteSizeBox, boxGeo->VertexBufferUploader);
+		ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+		CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
 
-	boxGeo->IndexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
-		mCommandList.Get(), boxIndices.data(), ibByteSizeBox, boxGeo->IndexBufferUploader);
+		ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+		CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
 
-	boxGeo->VertexByteStride = sizeof(PrimitiveTypes::PosTexNorColVertex);
-	boxGeo->VertexBufferByteSize = vbByteSizeBox;
-	boxGeo->IndexFormat = DXGI_FORMAT_R16_UINT;
-	boxGeo->IndexBufferByteSize = ibByteSizeBox;
+		geo->VertexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
+			mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
 
-	SubmeshGeometry submeshBox;
-	submeshBox.IndexCount = (UINT)boxIndices.size();
-	submeshBox.StartIndexLocation = 0;
-	submeshBox.BaseVertexLocation = 0;
+		geo->IndexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
+			mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
 
-	boxGeo->DrawArgs["box"] = submeshBox;
-#pragma endregion
+		geo->VertexByteStride = sizeof(PrimitiveTypes::PosTexNorColVertex);
+		geo->VertexBufferByteSize = vbByteSize;
+		geo->IndexFormat = DXGI_FORMAT_R16_UINT;
+		geo->IndexBufferByteSize = ibByteSize;
 
-	mGeometries[gridGeo->Name] = std::move(gridGeo);
-	mGeometries[boxGeo->Name] = std::move(boxGeo);
+		SubmeshGeometry submesh;
+		submesh.IndexCount = (UINT)indices.size();
+		submesh.StartIndexLocation = 0;
+		submesh.BaseVertexLocation = 0;
+
+		geo->DrawArgs["mirror"] = submesh;
+		mGeometries[geo->Name] = std::move(geo);
+	}
 }
 
 void Demo::BuildFrameResources()
@@ -620,7 +719,7 @@ void Demo::BuildFrameResources()
 	for (int i = 0; i < gNumFrameResources; ++i)
 	{
 		mFrameResources.push_back(std::make_unique<FrameResource>(mD3D12Device.Get(),
-			1, (UINT)mAllRitems.size(), (UINT)mMaterials.size()));
+			2, (UINT)mAllRitems.size(), (UINT)mMaterials.size()));
 	}
 }
 
@@ -630,7 +729,7 @@ void Demo::BuildDescriptorHeaps()
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	srvHeapDesc.NodeMask = 0;
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	srvHeapDesc.NumDescriptors = 2;
+	srvHeapDesc.NumDescriptors = 3;
 	ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(mSrvDescriptorHeap.GetAddressOf())));
 }
 
@@ -641,30 +740,28 @@ void Demo::BuildShaderResourceViews()
 	//
 	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
 
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-
 	auto floorTex = mTextures["tex_grid"]->Resource;
+	auto woodCrateTex = mTextures["WoodCrate01"]->Resource;
+	auto iceTex = mTextures["ice"]->Resource;
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.Format = floorTex->GetDesc().Format;
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	srvDesc.Texture2D.MostDetailedMip = 0;
 	srvDesc.Texture2D.MipLevels = floorTex->GetDesc().MipLevels;
 	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-
 	mD3D12Device->CreateShaderResourceView(floorTex.Get(), &srvDesc, hDescriptor);
 
 	hDescriptor.Offset(1, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-
-	srvDesc = {};
-	auto woodCrateTex = mTextures["WoodCrate01"]->Resource;
-	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.Format = woodCrateTex->GetDesc().Format;
-	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srvDesc.Texture2D.MostDetailedMip = 0;
 	srvDesc.Texture2D.MipLevels = woodCrateTex->GetDesc().MipLevels;
-	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-
 	mD3D12Device->CreateShaderResourceView(woodCrateTex.Get(), &srvDesc, hDescriptor);
+
+	hDescriptor.Offset(1, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+	srvDesc.Format = iceTex->GetDesc().Format;
+	srvDesc.Texture2D.MipLevels = iceTex->GetDesc().MipLevels;
+	mD3D12Device->CreateShaderResourceView(iceTex.Get(), &srvDesc, hDescriptor);
 }
 
 void Demo::BuildRenderItems()
@@ -678,15 +775,11 @@ void Demo::BuildRenderItems()
 	gridRitem->IndexCount = gridRitem->Geo->DrawArgs["grid"].IndexCount;
 	gridRitem->StartIndexLocation = gridRitem->Geo->DrawArgs["grid"].StartIndexLocation;
 	gridRitem->BaseVertexLocation = gridRitem->Geo->DrawArgs["grid"].BaseVertexLocation;
-
 	mRitemLayer[(int)RenderLayer::Opaque].push_back(gridRitem.get());
-
-	// All the render items are opaque.
-	mAllRitems.push_back(std::move(gridRitem));
 
 	auto boxRitem = std::make_unique<RenderItem>();
 	boxRitem->World = MathHelper::Identity4x4();
-	XMStoreFloat4x4(&(boxRitem->World), XMMatrixTranslation(0, 0.5f, 0));
+	XMStoreFloat4x4(&(boxRitem->World), XMMatrixTranslation(0, 0.5f, -2));
 	boxRitem->ObjCBIndex = 1;
 	boxRitem->Mat = mMaterials["wood"].get();
 	boxRitem->Geo = mGeometries["boxGeo"].get();
@@ -694,11 +787,37 @@ void Demo::BuildRenderItems()
 	boxRitem->IndexCount = boxRitem->Geo->DrawArgs["box"].IndexCount;
 	boxRitem->StartIndexLocation = boxRitem->Geo->DrawArgs["box"].StartIndexLocation;
 	boxRitem->BaseVertexLocation = boxRitem->Geo->DrawArgs["box"].BaseVertexLocation;
-
 	mRitemLayer[(int)RenderLayer::Opaque].push_back(boxRitem.get());
 
-	// All the render items are opaque.
+	auto reflectedBoxRitem = std::make_unique<RenderItem>();
+	*reflectedBoxRitem = *boxRitem;
+	reflectedBoxRitem->World = MathHelper::Identity4x4();
+
+	// Update reflection world matrix.
+	XMVECTOR mirrorPlane = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+	XMMATRIX R = XMMatrixReflect(mirrorPlane);
+	XMStoreFloat4x4(&reflectedBoxRitem->World, XMLoadFloat4x4(&(boxRitem->World)) * R);
+	reflectedBoxRitem->ObjCBIndex = 2;
+	mRitemLayer[(int)RenderLayer::Reflected].push_back(reflectedBoxRitem.get());
+
+	auto mirrorItem = std::make_unique<RenderItem>();
+	mirrorItem->World = MathHelper::Identity4x4();
+	XMStoreFloat4x4(&(mirrorItem->World), XMMatrixRotationX(XMConvertToRadians(-90)));
+	mirrorItem->ObjCBIndex = 3;
+	mirrorItem->Mat = mMaterials["icemirror"].get();
+	mirrorItem->Geo = mGeometries["mirrorGeo"].get();
+	mirrorItem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	mirrorItem->IndexCount = mirrorItem->Geo->DrawArgs["mirror"].IndexCount;
+	mirrorItem->StartIndexLocation = mirrorItem->Geo->DrawArgs["mirror"].StartIndexLocation;
+	mirrorItem->BaseVertexLocation = mirrorItem->Geo->DrawArgs["mirror"].BaseVertexLocation;
+
+	mRitemLayer[(int)RenderLayer::Mirrors].push_back(mirrorItem.get());
+	mRitemLayer[(int)RenderLayer::Transparent].push_back(mirrorItem.get());
+
+	mAllRitems.push_back(std::move(gridRitem));
 	mAllRitems.push_back(std::move(boxRitem));
+	mAllRitems.push_back(std::move(reflectedBoxRitem));
+	mAllRitems.push_back(std::move(mirrorItem));
 }
 
 void Demo::BuildPSO()
@@ -758,6 +877,61 @@ void Demo::BuildPSO()
 	opaqueWireframePsoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
 	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&opaqueWireframePsoDesc, IID_PPV_ARGS(&mPSOs["opaque_wireframe"])));
 
+	//
+	// PSO for mark stencil objects.
+	//
+
+	CD3DX12_BLEND_DESC mirrorBlendState(D3D12_DEFAULT);
+	mirrorBlendState.RenderTarget[0].RenderTargetWriteMask = 0;
+
+	CD3DX12_DEPTH_STENCIL_DESC mirrorDSS;
+	mirrorDSS.DepthEnable = true;
+	mirrorDSS.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+	mirrorDSS.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+	mirrorDSS.StencilEnable = true;
+	mirrorDSS.StencilReadMask = 0xff;
+	mirrorDSS.StencilWriteMask = 0xff;
+
+	mirrorDSS.FrontFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+	mirrorDSS.FrontFace.StencilPassOp = D3D12_STENCIL_OP_REPLACE;
+	mirrorDSS.FrontFace.StencilFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+	mirrorDSS.FrontFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
+	mirrorDSS.BackFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+	mirrorDSS.BackFace.StencilPassOp = D3D12_STENCIL_OP_REPLACE;
+	mirrorDSS.BackFace.StencilFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+	mirrorDSS.BackFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC markMirrorPsoDesc = opaquePsoDesc;
+	markMirrorPsoDesc.BlendState = mirrorBlendState;
+	markMirrorPsoDesc.DepthStencilState = mirrorDSS;
+	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&markMirrorPsoDesc, IID_PPV_ARGS(&mPSOs["markStencilMirrors"])));
+
+	//
+	// PSO for draw relect objects.
+	//
+
+	CD3DX12_DEPTH_STENCIL_DESC reflectionDSS;
+	reflectionDSS.DepthEnable = true;
+	reflectionDSS.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+	reflectionDSS.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+	reflectionDSS.StencilEnable = true;
+	reflectionDSS.StencilReadMask = 0xff;
+	reflectionDSS.StencilWriteMask = 0xff;
+
+	reflectionDSS.FrontFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+	reflectionDSS.FrontFace.StencilPassOp = D3D12_STENCIL_OP_KEEP;
+	reflectionDSS.FrontFace.StencilFunc = D3D12_COMPARISON_FUNC_EQUAL;
+	reflectionDSS.FrontFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
+	reflectionDSS.BackFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+	reflectionDSS.BackFace.StencilPassOp = D3D12_STENCIL_OP_KEEP;
+	reflectionDSS.BackFace.StencilFunc = D3D12_COMPARISON_FUNC_EQUAL;
+	reflectionDSS.BackFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC drawStencilReflectionsPsoDesc = opaquePsoDesc;
+	drawStencilReflectionsPsoDesc.DepthStencilState = reflectionDSS;
+	drawStencilReflectionsPsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+	drawStencilReflectionsPsoDesc.RasterizerState.FrontCounterClockwise = true;
+	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&drawStencilReflectionsPsoDesc, IID_PPV_ARGS(&mPSOs["drawStencilReflections"])));
 }
 
 void Demo::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)

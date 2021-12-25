@@ -34,12 +34,12 @@ private:
 	float mRoll = 0;
 
 	// Camera coordinate system with coordinates relative to world space.
-	DirectX::XMVECTOR mPosition = { 0.0f, 10.0f, 0.0f };
+	DirectX::XMVECTOR mPosition = { 0.0f, 5.0f, -10.0f };
 	DirectX::XMVECTOR mRight = { 1.0f, 0.0f, 0.0f };
 	DirectX::XMVECTOR mUp = { 0.0f, 1.0f, 0.0f };
 	DirectX::XMVECTOR mForward = { 0.0f, 0.0f, 1.0f };
 
-	DirectX::XMVECTOR mDefaultPosition = { 0.0f, 10.0f, 0.0f };
+	DirectX::XMVECTOR mDefaultPosition = { 0.0f, 5.0f, -10.0f };
 	DirectX::XMVECTOR mDefaultRight = { 1.0f, 0.0f, 0.0f };
 	DirectX::XMVECTOR mDefaultUp = { 0.0f, 1.0f, 0.0f };
 	DirectX::XMVECTOR mDefaultForward = { 0.0f, 0.0f, 1.0f };

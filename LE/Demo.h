@@ -43,7 +43,10 @@ struct RenderItem
 enum class RenderLayer : int
 {
 	Opaque = 0,
-	Transparent = 1,
+	Mirrors,
+	Reflected,
+	Transparent,
+	Shadow,
 	Count
 };
 
@@ -79,6 +82,7 @@ public:
 	void UpdateCamera();
 	void UpdateObjectCBs();
 	void UpdateMainPassCB();
+	void UpdateReflectedMainPassCB();
 	void UpdateMaterialCB();
 
 	void CalculateFrameStats();
@@ -137,6 +141,7 @@ private:
 
 	UINT mPassCbvOffset = 0;
 	PassConstants mMainPassCB;
+	PassConstants mReflectedPassCB;
 
 	std::unordered_map<std::string, ComPtr<ID3D12PipelineState>> mPSOs;
 
@@ -146,7 +151,7 @@ private:
 	XMFLOAT4X4 mProj;
 
 	float mYaw = 0;
-	float mPitch = 0;
+	float mPitch = XMConvertToRadians(15);
 	float mRadius = 100.0f;
 
 	float mSunTheta = 1.25f * XM_PI;

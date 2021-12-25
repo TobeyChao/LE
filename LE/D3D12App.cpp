@@ -6,6 +6,8 @@
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx12.h"
 
+#include <iostream>
+
 D3D12App::D3D12App()
 	:
 	mDepthStencilFormat(DXGI_FORMAT_D24_UNORM_S8_UINT),
@@ -300,6 +302,7 @@ void D3D12App::LogAdapters()
 		text += desc.Description;
 		text += L"\n";
 		OutputDebugString(text.c_str());
+		std::wcout << text.c_str() << std::endl;
 		adapterList.push_back(adapter);
 		++i;
 	}
@@ -323,6 +326,7 @@ void D3D12App::LogAdapterOutputs(IDXGIAdapter* adapter)
 		text += desc.DeviceName;
 		text += L"\n";
 		OutputDebugString(text.c_str());
+		std::wcout << text.c_str() << std::endl;
 		LogOutputDisplayModes(output, DXGI_FORMAT_B8G8R8A8_UNORM);
 		ReleaseCom(output);
 		++i;
@@ -348,6 +352,7 @@ void D3D12App::LogOutputDisplayModes(IDXGIOutput* output, DXGI_FORMAT format)
 			L" refresh_rate = " + std::to_wstring(n) + L"/" + std::to_wstring(d) +
 			L"\n";
 		OutputDebugString(text.c_str());
+		std::wcout << text.c_str() << std::endl;
 	}
 }
 
