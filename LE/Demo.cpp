@@ -167,12 +167,13 @@ void Demo::Draw()
 		ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
 		ImGui::Checkbox("Another Window", &show_another_window);
 		ImGui::Checkbox("Wire Frame Mode", &show_wireframe);
+		ImGui::Checkbox("MSAA", &mEnableMSAA);
 		ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
 
-		if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
-			counter++;
-		ImGui::SameLine();
-		ImGui::Text("counter = %d", counter);
+		//if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
+		//	counter++;
+		//ImGui::SameLine();
+		//ImGui::Text("counter = %d", counter);
 
 		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 		ImGui::End();
@@ -201,16 +202,38 @@ void Demo::Draw()
 	mCommandList->RSSetViewports(1, &mScreenViewport);
 	mCommandList->RSSetScissorRects(1, &mScissorRect);
 
-	// Indicate a state transition on the resource usage.
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
-		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+	if (mEnableMSAA)
+	{
+		D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+			mMSAARenderTarget.Get(),
+			D3D12_RESOURCE_STATE_RESOLVE_SOURCE,
+			D3D12_RESOURCE_STATE_RENDER_TARGET);
+		mCommandList->ResourceBarrier(1, &barrier);
 
-	// Clear the back buffer and depth buffer.
-	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), (float*)&clear_color, 0, nullptr);
-	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+		auto rtvDescriptor = mMSAARtvHeap->hCPU(0);
+		auto dsvDescriptor = mMSAADsvHeap->hCPU(0);
 
-	// Specify the buffers we are going to render to.
-	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
+		mCommandList->ClearRenderTargetView(rtvDescriptor, (float*)&clear_color, 0, nullptr);
+		mCommandList->ClearDepthStencilView(dsvDescriptor, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+
+		mCommandList->OMSetRenderTargets(1, &rtvDescriptor, FALSE, &dsvDescriptor);
+	}
+	else
+	{
+		// Indicate a state transition on the resource usage.
+		mCommandList->ResourceBarrier(1,
+			&CD3DX12_RESOURCE_BARRIER::Transition(
+				CurrentBackBuffer(),
+				D3D12_RESOURCE_STATE_PRESENT,
+				D3D12_RESOURCE_STATE_RENDER_TARGET));
+
+		// Clear the back buffer and depth buffer.
+		mCommandList->ClearRenderTargetView(CurrentBackBufferView(), (float*)&clear_color, 0, nullptr);
+		mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+
+		// Specify the buffers we are going to render to.
+		mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
+	}
 
 	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
@@ -244,6 +267,41 @@ void Demo::Draw()
 	mCommandList->SetPipelineState(mPSOs["transparent"].Get());
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Transparent]);
 
+	if (mEnableMSAA)
+	{
+		// Resolve the MSAA render target.
+		auto backBuffer = CurrentBackBuffer();
+		{
+			D3D12_RESOURCE_BARRIER barriers[2] =
+			{
+				CD3DX12_RESOURCE_BARRIER::Transition(
+					mMSAARenderTarget.Get(),
+					D3D12_RESOURCE_STATE_RENDER_TARGET,
+					D3D12_RESOURCE_STATE_RESOLVE_SOURCE),
+				CD3DX12_RESOURCE_BARRIER::Transition(
+					backBuffer,
+					D3D12_RESOURCE_STATE_PRESENT,
+					D3D12_RESOURCE_STATE_RESOLVE_DEST)
+			};
+
+			mCommandList->ResourceBarrier(2, barriers);
+		}
+
+		mCommandList->ResolveSubresource(backBuffer, 0, mMSAARenderTarget.Get(), 0, mDXGIFormat);
+
+		// Set render target for UI which is typically rendered without MSAA.
+		{
+			D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+				backBuffer,
+				D3D12_RESOURCE_STATE_RESOLVE_DEST,
+				D3D12_RESOURCE_STATE_RENDER_TARGET);
+			mCommandList->ResourceBarrier(1, &barrier);
+		}
+	}
+
+	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
+
+	// äÖÈ¾UI
 	ID3D12DescriptorHeap* descriptorHeapsSrv[] = { mSrvHeap->RawDH() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeapsSrv), descriptorHeapsSrv);
 	ImGui::Render();
@@ -843,7 +901,7 @@ void Demo::BuildPSO()
 	opaquePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	opaquePsoDesc.NumRenderTargets = 1;
 	opaquePsoDesc.RTVFormats[0] = mDXGIFormat;
-	opaquePsoDesc.SampleDesc.Count = mEnableMSAA ? 4 : 1;
+	opaquePsoDesc.SampleDesc.Count = mEnableMSAA ? mSampleCount : 1;
 	opaquePsoDesc.SampleDesc.Quality = mEnableMSAA ? (mMSAAQualityLevels - 1) : 0;
 	opaquePsoDesc.DSVFormat = mDepthStencilFormat;
 	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&opaquePsoDesc, IID_PPV_ARGS(&mPSOs["opaque_solid"])));

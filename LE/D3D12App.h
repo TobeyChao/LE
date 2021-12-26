@@ -75,8 +75,11 @@ protected:
 	ComPtr<ID3D12Device> mD3D12Device = nullptr;
 	ComPtr<ID3D12Fence> mFence = nullptr;
 	DXGI_FORMAT mDXGIFormat;
+
 	bool mEnableMSAA = false;
 	UINT mMSAAQualityLevels = 0;
+	UINT mSampleCount = 8;
+
 	ComPtr<ID3D12CommandAllocator> mCommandAllocator;
 	ComPtr<ID3D12CommandQueue> mCommandQueue;
 	ComPtr<ID3D12GraphicsCommandList> mCommandList;
@@ -88,11 +91,17 @@ protected:
 	int mCurrentBackBuffer = 0;
 	std::unique_ptr<CDescriptorHeapWrapper> mRtvHeap;
 	std::unique_ptr<CDescriptorHeapWrapper> mDsvHeap;
-	//ComPtr<ID3D12DescriptorHeap> mSrvHeap;
+	// ImGUI
 	std::unique_ptr<CDescriptorHeapWrapper> mSrvHeap;
 	ComPtr<ID3D12Resource> mSwapChainBuffer[SwapChainBufferCount];
 	DXGI_FORMAT mDepthStencilFormat;
 	ComPtr<ID3D12Resource> mDepthStencilBuffer;
+
+	ComPtr<ID3D12Resource> mMSAARenderTarget;
+	ComPtr<ID3D12Resource> mMSAADepthStencilBuffer;
+	std::unique_ptr<CDescriptorHeapWrapper> mMSAARtvHeap;
+	std::unique_ptr<CDescriptorHeapWrapper> mMSAADsvHeap;
+
 	UINT64 mCurrentFence = 0;
 	D3D12_VIEWPORT mScreenViewport;
 	D3D12_RECT mScissorRect;

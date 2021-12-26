@@ -262,7 +262,7 @@ void D3D12App::CreateD3D12Device()
 	// 检查多重采样质量级别
 	D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS qualityLevel;
 	qualityLevel.Format = mDXGIFormat;
-	qualityLevel.SampleCount = 8;
+	qualityLevel.SampleCount = mSampleCount;
 	qualityLevel.NumQualityLevels = 0;
 	qualityLevel.Flags = D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE;
 	ThrowIfFailed(mD3D12Device->CheckFeatureSupport(D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS, &qualityLevel, sizeof(qualityLevel)));
@@ -385,8 +385,8 @@ void D3D12App::CreateSwapChain()
 	sd.OutputWindow = mMainWnd;
 	sd.Windowed = true;
 	sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-	sd.SampleDesc.Count = mEnableMSAA ? 4 : 1;
-	sd.SampleDesc.Quality = mEnableMSAA ? (mMSAAQualityLevels - 1) : 0;
+	sd.SampleDesc.Count = 1;
+	sd.SampleDesc.Quality = 0;
 	sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
 	ThrowIfFailed(mDXGIFactory->CreateSwapChain(mCommandQueue.Get(), &sd, mSwapChain.GetAddressOf()));
 }
@@ -401,6 +401,13 @@ void D3D12App::CreateDescriptorHeap()
 
 	mSrvHeap = std::make_unique<CDescriptorHeapWrapper>();
 	ThrowIfFailed(mSrvHeap->Create(mD3D12Device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1, true));
+
+
+	mMSAARtvHeap = std::make_unique<CDescriptorHeapWrapper>();
+	ThrowIfFailed(mMSAARtvHeap->Create(mD3D12Device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 1, false));
+
+	mMSAADsvHeap = std::make_unique<CDescriptorHeapWrapper>();
+	ThrowIfFailed(mMSAADsvHeap->Create(mD3D12Device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1, false));
 }
 
 void D3D12App::CreateRenderResource()
@@ -415,40 +422,120 @@ void D3D12App::CreateRenderResource()
 	}
 
 	// 创建深度/模板缓冲区及其视图
-	D3D12_RESOURCE_DESC depth_stencil_desc;
-	depth_stencil_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-	depth_stencil_desc.MipLevels = 1;
-	depth_stencil_desc.Format = mDepthStencilFormat;
-	depth_stencil_desc.Width = mClientWidth;
-	depth_stencil_desc.Height = mClientHeight;
-	depth_stencil_desc.Alignment = 0;
-	depth_stencil_desc.DepthOrArraySize = 1;
-	depth_stencil_desc.SampleDesc.Count = mEnableMSAA ? 4 : 1;;
-	depth_stencil_desc.SampleDesc.Quality = mEnableMSAA ? (mMSAAQualityLevels - 1) : 0;
-	depth_stencil_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-	depth_stencil_desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+	D3D12_RESOURCE_DESC depth_stencil_desc = CD3DX12_RESOURCE_DESC::Tex2D(
+		mDepthStencilFormat,
+		mClientWidth,
+		mClientHeight,
+		1,
+		1
+	);
+	depth_stencil_desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
-	D3D12_CLEAR_VALUE optClear;
-	optClear.Format = mDepthStencilFormat;
-	optClear.DepthStencil.Depth = 1.0f;
-	optClear.DepthStencil.Stencil = 0;
+	//D3D12_RESOURCE_DESC depth_stencil_desc;
+	//depth_stencil_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	//depth_stencil_desc.MipLevels = 1;
+	//depth_stencil_desc.Format = mDepthStencilFormat;
+	//depth_stencil_desc.Width = mClientWidth;
+	//depth_stencil_desc.Height = mClientHeight;
+	//depth_stencil_desc.Alignment = 0;
+	//depth_stencil_desc.DepthOrArraySize = 1;
+	//depth_stencil_desc.SampleDesc.Count = mEnableMSAA ? 4 : 1;;
+	//depth_stencil_desc.SampleDesc.Quality = mEnableMSAA ? (mMSAAQualityLevels - 1) : 0;
+	//depth_stencil_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	//depth_stencil_desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+	D3D12_CLEAR_VALUE depthClear;
+	depthClear.Format = mDepthStencilFormat;
+	depthClear.DepthStencil.Depth = 1.0f;
+	depthClear.DepthStencil.Stencil = 0;
 
 	ThrowIfFailed(mD3D12Device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 		D3D12_HEAP_FLAG_NONE,
 		&depth_stencil_desc,
-		D3D12_RESOURCE_STATE_COMMON,
-		&optClear,
+		D3D12_RESOURCE_STATE_DEPTH_WRITE,
+		&depthClear,
 		IID_PPV_ARGS(mDepthStencilBuffer.GetAddressOf())
 	));
 	mD3D12Device->CreateDepthStencilView(mDepthStencilBuffer.Get(), nullptr, DepthStencilView());
 
+	//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+	//	mDepthStencilBuffer.Get(),
+	//	D3D12_RESOURCE_STATE_COMMON,
+	//	D3D12_RESOURCE_STATE_DEPTH_WRITE
+	//));
 
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		mDepthStencilBuffer.Get(),
-		D3D12_RESOURCE_STATE_COMMON,
-		D3D12_RESOURCE_STATE_DEPTH_WRITE
+#pragma region MSAA
+	CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_DEFAULT);
+
+	D3D12_RESOURCE_DESC msaaRTDesc = CD3DX12_RESOURCE_DESC::Tex2D(
+		mDXGIFormat,
+		mClientWidth,
+		mClientHeight,
+		1,
+		1,
+		mSampleCount
+	);
+	msaaRTDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+	D3D12_CLEAR_VALUE msaaClear;
+	msaaClear.Format = mDXGIFormat;
+	memcpy(msaaClear.Color, DirectX::Colors::Black, sizeof(float) * 4);
+
+	mD3D12Device->CreateCommittedResource(
+		&heapProperties,
+		D3D12_HEAP_FLAG_NONE,
+		&msaaRTDesc,
+		D3D12_RESOURCE_STATE_RESOLVE_SOURCE,
+		&msaaClear,
+		IID_PPV_ARGS(mMSAARenderTarget.GetAddressOf())
+	);
+
+	mMSAARenderTarget->SetName(L"MSAA Render Target");
+
+	D3D12_RENDER_TARGET_VIEW_DESC msaaRtvDesc = {};
+	msaaRtvDesc.Format = mDXGIFormat;
+	//https://docs.microsoft.com/zh-cn/windows/win32/api/d3d12/ne-d3d12-d3d12_rtv_dimension
+	msaaRtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DMS;
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE msaaRtvHeapHandle(mMSAARtvHeap->hCPU(0));
+	mD3D12Device->CreateRenderTargetView(
+		mMSAARenderTarget.Get(),
+		&msaaRtvDesc,
+		msaaRtvHeapHandle);
+
+	D3D12_RESOURCE_DESC msaaDSDesc = CD3DX12_RESOURCE_DESC::Tex2D(
+		mDepthStencilFormat,
+		mClientWidth,
+		mClientHeight,
+		1,
+		1,
+		mSampleCount
+	);
+	msaaDSDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+	D3D12_CLEAR_VALUE msaaDepthClear;
+	msaaDepthClear.Format = mDepthStencilFormat;
+	msaaDepthClear.DepthStencil.Depth = 1.0f;
+	msaaDepthClear.DepthStencil.Stencil = 0;
+
+	ThrowIfFailed(mD3D12Device->CreateCommittedResource(
+		&heapProperties,
+		D3D12_HEAP_FLAG_NONE,
+		&msaaDSDesc,
+		D3D12_RESOURCE_STATE_DEPTH_WRITE,
+		&msaaDepthClear,
+		IID_PPV_ARGS(mMSAADepthStencilBuffer.GetAddressOf())
 	));
+
+	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+	dsvDesc.Format = mDepthStencilFormat;
+	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DMS;
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE msaaDsvHeapHandle(mMSAADsvHeap->hCPU(0));
+	mD3D12Device->CreateDepthStencilView(mMSAADepthStencilBuffer.Get(), &dsvDesc, msaaDsvHeapHandle);
+
+#pragma endregion
 
 	// Execute the resize commands.
 	ThrowIfFailed(mCommandList->Close());
