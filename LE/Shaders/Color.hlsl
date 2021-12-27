@@ -50,7 +50,7 @@ struct VertexIn
 {
     float3 PosL : POSITION;
     float2 Texcoord : TEXCOORD;
-    float3 NormalL : Normal;
+    float3 NormalL : NORMAL;
     float4 Color : COLOR0;  // Vertex Color
 };
             
@@ -58,7 +58,7 @@ struct VertexOut
 {
     float4 PosH : SV_POSITION;
     float3 PosW : POSITION;
-    float3 NormalW : Normal;
+    float3 NormalW : NORMAL;
     float2 TexC : TEXCOORD;
 };
 

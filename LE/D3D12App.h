@@ -76,7 +76,7 @@ protected:
 	ComPtr<ID3D12Fence> mFence = nullptr;
 	DXGI_FORMAT mDXGIFormat;
 
-	bool mEnableMSAA = false;
+	bool mEnableMSAA = true;
 	UINT mMSAAQualityLevels = 0;
 	UINT mSampleCount = 8;
 

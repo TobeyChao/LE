@@ -83,7 +83,7 @@ void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 	// 加载图片资源
 	LoadTextures();
 	// 创建几何体
-	BuildLandGeometry();
+	BuildGeometry();
 	// 创建材质
 	BuildMaterials();
 	// 创建着色器和输入布局
@@ -250,6 +250,10 @@ void Demo::Draw()
 	// 渲染不透明物体
 	mCommandList->SetGraphicsRootConstantBufferView(3, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque]);
+
+	// 渲染树
+	mCommandList->SetPipelineState(mPSOs["treeSprites"].Get());
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::AlphaTestedTreeSprites]);
 
 	// 渲染镜子
 	mCommandList->OMSetStencilRef(1);
@@ -539,9 +543,16 @@ void Demo::LoadTextures()
 	D3D12Util::LoadTexture(mD3D12Device.Get(), mCommandList.Get(), iceTex->Filename.c_str(),
 		iceTex->Resource.GetAddressOf(), iceTex->UploadHeap.GetAddressOf());
 
+	auto treeArrayTex = std::make_unique<Texture>();
+	treeArrayTex->Name = "treeArrayTex";
+	treeArrayTex->Filename = L"Textures/treeArray2.dds";
+	D3D12Util::LoadTexture(mD3D12Device.Get(), mCommandList.Get(), treeArrayTex->Filename.c_str(),
+		treeArrayTex->Resource.GetAddressOf(), treeArrayTex->UploadHeap.GetAddressOf());
+
 	mTextures[gridTex->Name] = std::move(gridTex);
 	mTextures[woodTex->Name] = std::move(woodTex);
 	mTextures[iceTex->Name] = std::move(iceTex);
+	mTextures[treeArrayTex->Name] = std::move(treeArrayTex);
 }
 
 void Demo::BuildMaterials()
@@ -573,9 +584,18 @@ void Demo::BuildMaterials()
 	icemirror->Roughness = 0.5f;
 	XMStoreFloat4x4(&icemirror->MatTransform, XMMatrixScaling(1.0f, 1.0f, 1.0f));
 
+	auto treeSprites = std::make_unique<Material>();
+	treeSprites->Name = "treeSprites";
+	treeSprites->MatCBIndex = 3;
+	treeSprites->DiffuseSrvHeapIndex = 3;
+	treeSprites->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	treeSprites->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
+	treeSprites->Roughness = 0.125f;
+
 	mMaterials["floor"] = std::move(floor);
 	mMaterials["wood"] = std::move(wood);
 	mMaterials["icemirror"] = std::move(icemirror);
+	mMaterials["treeSprites"] = std::move(treeSprites);
 }
 
 void Demo::BuildRootSignature()
@@ -617,11 +637,27 @@ void Demo::BuildShadersAndInputLayout()
 	mShaders["standardVS"] = D3D12Util::CompileShader(L"Shaders\\Color.hlsl", nullptr, "VS", "vs_5_0");
 	mShaders["opaquePS"] = D3D12Util::CompileShader(L"Shaders\\Color.hlsl", nullptr, "PS", "ps_5_0");
 
+	const D3D_SHADER_MACRO alphaTestDefines[] =
+	{
+		"ALPHA_TEST", "1",
+		NULL, NULL
+	};
+
+	mShaders["treeSpriteVS"] = D3D12Util::CompileShader(L"Shaders\\TreeSprite.hlsl", nullptr, "VS", "vs_5_0");
+	mShaders["treeSpriteGS"] = D3D12Util::CompileShader(L"Shaders\\TreeSprite.hlsl", nullptr, "GS", "gs_5_0");
+	mShaders["treeSpritePS"] = D3D12Util::CompileShader(L"Shaders\\TreeSprite.hlsl", alphaTestDefines, "PS", "ps_5_0");
+
 	mInputLayout.clear();
 	mInputLayout.insert(mInputLayout.end(), std::begin(InputLayouts::inputLayoutPosTexNorCol), std::end(InputLayouts::inputLayoutPosTexNorCol));
+
+	mTreeSpriteInputLayout =
+	{
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "SIZE", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	};
 }
 
-void Demo::BuildLandGeometry()
+void Demo::BuildGeometry()
 {
 	GeometryGenerator geoGen;
 	// Grid
@@ -770,6 +806,64 @@ void Demo::BuildLandGeometry()
 		geo->DrawArgs["mirror"] = submesh;
 		mGeometries[geo->Name] = std::move(geo);
 	}
+	// Tree
+	{
+		struct TreeSpriteVertex
+		{
+			XMFLOAT3 Pos;
+			XMFLOAT2 Size;
+		};
+
+		static const int treeCount = 16;
+		std::array<TreeSpriteVertex, 16> vertices;
+		for (UINT i = 0; i < treeCount; ++i)
+		{
+			float x = MathHelper::RandF(-16.0f, 16.0f);
+			float z = MathHelper::RandF(-16.0f, 16.0f);
+			float y = 1.5f;
+
+			vertices[i].Pos = XMFLOAT3(x, y, z);
+			vertices[i].Size = XMFLOAT2(4.0f, 4.0f);
+		}
+
+		std::array<std::uint16_t, 16> indices =
+		{
+			0, 1, 2, 3, 4, 5, 6, 7,
+			8, 9, 10, 11, 12, 13, 14, 15
+		};
+
+		const UINT vbByteSize = (UINT)vertices.size() * sizeof(TreeSpriteVertex);
+		const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
+
+		auto geo = std::make_unique<MeshGeometry>();
+		geo->Name = "treeSpritesGeo";
+
+		ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+		CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+
+		ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+		CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+
+		geo->VertexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
+			mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
+
+		geo->IndexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
+			mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+
+		geo->VertexByteStride = sizeof(TreeSpriteVertex);
+		geo->VertexBufferByteSize = vbByteSize;
+		geo->IndexFormat = DXGI_FORMAT_R16_UINT;
+		geo->IndexBufferByteSize = ibByteSize;
+
+		SubmeshGeometry submesh;
+		submesh.IndexCount = (UINT)indices.size();
+		submesh.StartIndexLocation = 0;
+		submesh.BaseVertexLocation = 0;
+
+		geo->DrawArgs["points"] = submesh;
+
+		mGeometries["treeSpritesGeo"] = std::move(geo);
+	}
 }
 
 void Demo::BuildFrameResources()
@@ -787,7 +881,7 @@ void Demo::BuildDescriptorHeaps()
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	srvHeapDesc.NodeMask = 0;
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	srvHeapDesc.NumDescriptors = 3;
+	srvHeapDesc.NumDescriptors = 4;
 	ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(mSrvDescriptorHeap.GetAddressOf())));
 }
 
@@ -801,6 +895,7 @@ void Demo::BuildShaderResourceViews()
 	auto floorTex = mTextures["tex_grid"]->Resource;
 	auto woodCrateTex = mTextures["WoodCrate01"]->Resource;
 	auto iceTex = mTextures["ice"]->Resource;
+	auto treeTex = mTextures["treeArrayTex"]->Resource;
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -820,6 +915,15 @@ void Demo::BuildShaderResourceViews()
 	srvDesc.Format = iceTex->GetDesc().Format;
 	srvDesc.Texture2D.MipLevels = iceTex->GetDesc().MipLevels;
 	mD3D12Device->CreateShaderResourceView(iceTex.Get(), &srvDesc, hDescriptor);
+
+	hDescriptor.Offset(1, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+	srvDesc.Format = treeTex->GetDesc().Format;
+	srvDesc.Texture2DArray.MostDetailedMip = 0;
+	srvDesc.Texture2DArray.MipLevels = -1;
+	srvDesc.Texture2DArray.FirstArraySlice = 0;
+	srvDesc.Texture2DArray.ArraySize = treeTex->GetDesc().DepthOrArraySize;
+	mD3D12Device->CreateShaderResourceView(treeTex.Get(), &srvDesc, hDescriptor);
 }
 
 void Demo::BuildRenderItems()
@@ -872,10 +976,22 @@ void Demo::BuildRenderItems()
 	mRitemLayer[(int)RenderLayer::Mirrors].push_back(mirrorItem.get());
 	mRitemLayer[(int)RenderLayer::Transparent].push_back(mirrorItem.get());
 
+	auto treeSpritesRitem = std::make_unique<RenderItem>();
+	treeSpritesRitem->World = MathHelper::Identity4x4();
+	treeSpritesRitem->ObjCBIndex = 4;
+	treeSpritesRitem->Mat = mMaterials["treeSprites"].get();
+	treeSpritesRitem->Geo = mGeometries["treeSpritesGeo"].get();
+	treeSpritesRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_POINTLIST;
+	treeSpritesRitem->IndexCount = treeSpritesRitem->Geo->DrawArgs["points"].IndexCount;
+	treeSpritesRitem->StartIndexLocation = treeSpritesRitem->Geo->DrawArgs["points"].StartIndexLocation;
+	treeSpritesRitem->BaseVertexLocation = treeSpritesRitem->Geo->DrawArgs["points"].BaseVertexLocation;
+	mRitemLayer[(int)RenderLayer::AlphaTestedTreeSprites].push_back(treeSpritesRitem.get());
+
 	mAllRitems.push_back(std::move(gridRitem));
 	mAllRitems.push_back(std::move(boxRitem));
 	mAllRitems.push_back(std::move(reflectedBoxRitem));
 	mAllRitems.push_back(std::move(mirrorItem));
+	mAllRitems.push_back(std::move(treeSpritesRitem));
 }
 
 void Demo::BuildPSO()
@@ -990,6 +1106,35 @@ void Demo::BuildPSO()
 	drawStencilReflectionsPsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
 	drawStencilReflectionsPsoDesc.RasterizerState.FrontCounterClockwise = true;
 	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&drawStencilReflectionsPsoDesc, IID_PPV_ARGS(&mPSOs["drawStencilReflections"])));
+
+	//
+	// PSO for tree sprites
+	//
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC treeSpritePsoDesc = opaquePsoDesc;
+	if (mEnableMSAA)
+	{
+		treeSpritePsoDesc.BlendState.AlphaToCoverageEnable = true;
+	}
+	treeSpritePsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["treeSpriteVS"]->GetBufferPointer()),
+		mShaders["treeSpriteVS"]->GetBufferSize()
+	};
+	treeSpritePsoDesc.GS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["treeSpriteGS"]->GetBufferPointer()),
+		mShaders["treeSpriteGS"]->GetBufferSize()
+	};
+	treeSpritePsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["treeSpritePS"]->GetBufferPointer()),
+		mShaders["treeSpritePS"]->GetBufferSize()
+	};
+	treeSpritePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
+	treeSpritePsoDesc.InputLayout = { mTreeSpriteInputLayout.data(), (UINT)mTreeSpriteInputLayout.size() };
+	treeSpritePsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+
+	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&treeSpritePsoDesc, IID_PPV_ARGS(&mPSOs["treeSprites"])));
 }
 
 void Demo::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)

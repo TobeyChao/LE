@@ -46,6 +46,8 @@ enum class RenderLayer : int
 	Mirrors,
 	Reflected,
 	Transparent,
+	AlphaTested,
+	AlphaTestedTreeSprites,
 	Shadow,
 	Count
 };
@@ -91,7 +93,7 @@ public:
 	void BuildMaterials();
 	void BuildRootSignature();
 	void BuildShadersAndInputLayout();
-	void BuildLandGeometry();
+	void BuildGeometry();
 	void BuildRenderItems();
 	void BuildFrameResources();
 	void BuildDescriptorHeaps();
@@ -132,7 +134,9 @@ private:
 	std::unordered_map<std::string, std::unique_ptr<MeshGeometry>> mGeometries;
 	std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
 	std::unordered_map<std::string, std::unique_ptr<Texture>> mTextures;
+
 	std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
+	std::vector<D3D12_INPUT_ELEMENT_DESC> mTreeSpriteInputLayout;
 
 	// List of all the render items.
 	std::vector<std::unique_ptr<RenderItem>> mAllRitems;
