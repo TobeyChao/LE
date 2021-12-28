@@ -151,5 +151,8 @@
     <ClCompile Include="Camera.cpp">
       <Filter>Common</Filter>
     </ClCompile>
+    <ClCompile Include="imgui_tables.cpp">
+      <Filter>ImGui</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
