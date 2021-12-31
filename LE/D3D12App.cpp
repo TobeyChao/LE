@@ -8,10 +8,21 @@
 
 #include <iostream>
 
+DXGI_FORMAT NoSRGB(DXGI_FORMAT fmt)
+{
+	switch (fmt)
+	{
+	case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:   return DXGI_FORMAT_R8G8B8A8_UNORM;
+	case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:   return DXGI_FORMAT_B8G8R8A8_UNORM;
+	case DXGI_FORMAT_B8G8R8X8_UNORM_SRGB:   return DXGI_FORMAT_B8G8R8X8_UNORM;
+	default:                                return fmt;
+	}
+}
+
 D3D12App::D3D12App()
 	:
 	mDepthStencilFormat(DXGI_FORMAT_D24_UNORM_S8_UINT),
-	mDXGIFormat(DXGI_FORMAT_R8G8B8A8_UNORM)
+	mBackBufferFormat(DXGI_FORMAT_R8G8B8A8_UNORM)
 {
 	CoInitialize(NULL);
 }
@@ -197,11 +208,13 @@ void D3D12App::OnResize()
 		mSwapChainBuffer[i].Reset();
 	mDepthStencilBuffer.Reset();
 
+	DXGI_FORMAT format = NoSRGB(mBackBufferFormat);
+
 	// Resize the swap chain.
 	ThrowIfFailed(mSwapChain->ResizeBuffers(
 		SwapChainBufferCount,
 		mClientWidth, mClientHeight,
-		mDXGIFormat,
+		format,
 		DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH));
 
 	mCurrentBackBuffer = 0;
@@ -261,7 +274,7 @@ void D3D12App::CreateD3D12Device()
 
 	// 检查多重采样质量级别
 	D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS qualityLevel;
-	qualityLevel.Format = mDXGIFormat;
+	qualityLevel.Format = mBackBufferFormat;
 	qualityLevel.SampleCount = mSampleCount;
 	qualityLevel.NumQualityLevels = 0;
 	qualityLevel.Flags = D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE;
@@ -366,16 +379,20 @@ void D3D12App::CreateCommandObjects()
 	ThrowIfFailed(mD3D12Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(mCommandAllocator.GetAddressOf())));
 	ThrowIfFailed(mD3D12Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
 		mCommandAllocator.Get(), nullptr, IID_PPV_ARGS(mCommandList.GetAddressOf())));
+	mCommandAllocator->SetName(L"CommandAllocator");
+	mCommandList->SetName(L"MainCommandList");
 	mCommandList->Close();
 }
 
 void D3D12App::CreateSwapChain()
 {
 	mSwapChain.Reset();
+	DXGI_FORMAT format = NoSRGB(mBackBufferFormat);
+
 	DXGI_SWAP_CHAIN_DESC sd;
 	sd.BufferDesc.Width = mClientWidth;
 	sd.BufferDesc.Height = mClientHeight;
-	sd.BufferDesc.Format = mDXGIFormat;
+	sd.BufferDesc.Format = format;
 	sd.BufferDesc.RefreshRate.Numerator = 144;
 	sd.BufferDesc.RefreshRate.Denominator = 1;
 	sd.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
@@ -469,7 +486,7 @@ void D3D12App::CreateRenderResource()
 	CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_DEFAULT);
 
 	D3D12_RESOURCE_DESC msaaRTDesc = CD3DX12_RESOURCE_DESC::Tex2D(
-		mDXGIFormat,
+		mBackBufferFormat,
 		mClientWidth,
 		mClientHeight,
 		1,
@@ -478,9 +495,9 @@ void D3D12App::CreateRenderResource()
 	);
 	msaaRTDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
-	D3D12_CLEAR_VALUE msaaClear;
-	msaaClear.Format = mDXGIFormat;
-	memcpy(msaaClear.Color, DirectX::Colors::Black, sizeof(float) * 4);
+	D3D12_CLEAR_VALUE msaaClear = {};
+	msaaClear.Format = mBackBufferFormat;
+	memcpy(msaaClear.Color, DirectX::Colors::Azure, sizeof(float) * 4);
 
 	mD3D12Device->CreateCommittedResource(
 		&heapProperties,
@@ -494,7 +511,7 @@ void D3D12App::CreateRenderResource()
 	mMSAARenderTarget->SetName(L"MSAA Render Target");
 
 	D3D12_RENDER_TARGET_VIEW_DESC msaaRtvDesc = {};
-	msaaRtvDesc.Format = mDXGIFormat;
+	msaaRtvDesc.Format = mBackBufferFormat;
 	//https://docs.microsoft.com/zh-cn/windows/win32/api/d3d12/ne-d3d12-d3d12_rtv_dimension
 	msaaRtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DMS;
 

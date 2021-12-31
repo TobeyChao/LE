@@ -41,9 +41,6 @@
     <ClInclude Include="PrimitiveTypes.h">
       <Filter>Common</Filter>
     </ClInclude>
-    <ClInclude Include="Demo.h">
-      <Filter>App</Filter>
-    </ClInclude>
     <ClInclude Include="MeshGeometry.h">
       <Filter>Common</Filter>
     </ClInclude>
@@ -94,6 +91,9 @@
     </ClInclude>
     <ClInclude Include="Camera.h">
       <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="Demo.h">
+      <Filter>App</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

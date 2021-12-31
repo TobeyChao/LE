@@ -49,6 +49,7 @@ enum class RenderLayer : int
 	AlphaTested,
 	AlphaTestedTreeSprites,
 	Shadow,
+	Tessellation,
 	Count
 };
 
@@ -72,12 +73,10 @@ public:
 
 		SetCapture(mMainWnd);
 	}
-
 	void OnMouseUp(WPARAM btnState, int x, int y)
 	{
 		ReleaseCapture();
 	}
-
 	void OnMouseMove(WPARAM btnState, int x, int y) override;
 
 	void ProcessInput();
@@ -94,34 +93,28 @@ public:
 	void BuildRootSignature();
 	void BuildShadersAndInputLayout();
 	void BuildGeometry();
+	void BuildLandGeometry();
 	void BuildRenderItems();
 	void BuildFrameResources();
 	void BuildDescriptorHeaps();
 	void BuildShaderResourceViews();
 	void BuildPSO();
 
+	struct Data
+	{
+		XMFLOAT3 v1;
+		XMFLOAT2 v2;
+	};
+
+	void BuildComputeBuffers();
+	void BuildComputeRootSignature();
+	void BuildComputeShadersAndInputLayout();
+	void BuildComputePSOs();
+	void DoComputeWork();
+
 	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);
 
 	std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> GetStaticSamplers();
-
-	float GetHillsHeight(float x, float z) const
-	{
-		return 0.3f * (z * sinf(0.1f * x) + x * cosf(0.1f * z));
-	}
-
-	XMFLOAT3 GetHillsNormal(float x, float z)const
-	{
-		// n = (-df/dx, 1, -df/dz)
-		XMFLOAT3 n(
-			-0.03f * z * cosf(0.1f * x) - 0.3f * cosf(0.1f * z),
-			1.0f,
-			-0.3f * sinf(0.1f * x) + 0.03f * x * sinf(0.1f * z));
-
-		XMVECTOR unitNormal = XMVector3Normalize(XMLoadFloat3(&n));
-		XMStoreFloat3(&n, unitNormal);
-
-		return n;
-	}
 private:
 	std::vector<std::unique_ptr<FrameResource>> mFrameResources;
 	FrameResource* mCurrFrameResource = nullptr;
@@ -135,24 +128,28 @@ private:
 	std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
 	std::unordered_map<std::string, std::unique_ptr<Texture>> mTextures;
 
-	std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
+	/*InputLayout*/
+	std::vector<D3D12_INPUT_ELEMENT_DESC> mDefaultInputLayout;
 	std::vector<D3D12_INPUT_ELEMENT_DESC> mTreeSpriteInputLayout;
+	std::vector<D3D12_INPUT_ELEMENT_DESC> mTessellationInputLayout;
 
 	// List of all the render items.
 	std::vector<std::unique_ptr<RenderItem>> mAllRitems;
 	// Render items divided by PSO.
 	std::vector<RenderItem*> mRitemLayer[(int)RenderLayer::Count];
 
-	UINT mPassCbvOffset = 0;
+	//UINT mPassCbvOffset = 0;
 	PassConstants mMainPassCB;
 	PassConstants mReflectedPassCB;
 
 	std::unordered_map<std::string, ComPtr<ID3D12PipelineState>> mPSOs;
 
+#pragma region Camera
 	std::unordered_map<std::string, std::unique_ptr<Camera>> mCameras;
-	XMFLOAT3 mEyePos;
-	XMFLOAT4X4 mView;
-	XMFLOAT4X4 mProj;
+
+	XMFLOAT3 mEyePos = { 0.0f, 0.0f, 0.0f };
+	XMFLOAT4X4 mView = MathHelper::Identity4x4();
+	XMFLOAT4X4 mProj = MathHelper::Identity4x4();
 
 	float mYaw = 0;
 	float mPitch = XMConvertToRadians(15);
@@ -162,4 +159,16 @@ private:
 	float mSunPhi = XM_PIDIV4;
 
 	POINT mLastMousePos;
+#pragma endregion
+
+	int NumDataElements = 32;
+	ComPtr<ID3D12RootSignature> mComputeRootSignature = nullptr;
+	ComPtr<ID3D12Resource> mComputeInputBufferA = nullptr;
+	ComPtr<ID3D12Resource> mComputeInputUploadBufferA = nullptr;
+	ComPtr<ID3D12Resource> mComputeInputBufferB = nullptr;
+	ComPtr<ID3D12Resource> mComputeInputUploadBufferB = nullptr;
+	ComPtr<ID3D12Resource> mComputeOutputBuffer = nullptr;
+	ComPtr<ID3D12Resource> mComputeReadBackBuffer = nullptr;
+
+	ComPtr<ID3D12RootSignature> mTessellationRootSignature = nullptr;
 };

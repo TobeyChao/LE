@@ -16,7 +16,7 @@
 bool show_demo_window = false;
 bool show_another_window = false;
 bool show_wireframe = false;
-ImVec4 clear_color = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
+XMVECTORF32 clear_color = DirectX::Colors::Azure;
 ImFont* font;
 
 Demo::~Demo()
@@ -37,6 +37,10 @@ void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 	D3D12App::Initialize(hwnd, clientWidth, clientHeight);
 
 	mCameras["MainCamera"] = std::make_unique<Camera>();
+
+#pragma region IMGUI
+
+#pragma endregion
 
 	// Setup Dear ImGui context
 	IMGUI_CHECKVERSION();
@@ -84,6 +88,8 @@ void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 	LoadTextures();
 	// 创建几何体
 	BuildGeometry();
+	BuildLandGeometry();
+
 	// 创建材质
 	BuildMaterials();
 	// 创建着色器和输入布局
@@ -107,9 +113,23 @@ void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 	ThrowIfFailed(mCommandList->Close());
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
-
-	// Wait until initialization is complete.
 	FlushCommandQueue();
+
+	//mCommandAllocator->Reset();
+	//mCommandList->Reset(mCommandAllocator.Get(), nullptr);
+
+	//BuildComputeBuffers();
+	//BuildComputeRootSignature();
+	//BuildComputeShadersAndInputLayout();
+	//BuildComputePSOs();
+
+	//// Execute the initialization commands.
+	//ThrowIfFailed(mCommandList->Close());
+	//*cmdsLists = { mCommandList.Get() };
+	//mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+	//FlushCommandQueue();
+
+	//DoComputeWork();
 }
 
 void Demo::OnResize()
@@ -213,10 +233,10 @@ void Demo::Draw()
 		auto rtvDescriptor = mMSAARtvHeap->hCPU(0);
 		auto dsvDescriptor = mMSAADsvHeap->hCPU(0);
 
+		mCommandList->OMSetRenderTargets(1, &rtvDescriptor, FALSE, &dsvDescriptor);
 		mCommandList->ClearRenderTargetView(rtvDescriptor, (float*)&clear_color, 0, nullptr);
 		mCommandList->ClearDepthStencilView(dsvDescriptor, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
-		mCommandList->OMSetRenderTargets(1, &rtvDescriptor, FALSE, &dsvDescriptor);
 	}
 	else
 	{
@@ -250,6 +270,10 @@ void Demo::Draw()
 	// 渲染不透明物体
 	mCommandList->SetGraphicsRootConstantBufferView(3, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque]);
+
+	// 渲染曲面细分
+	mCommandList->SetPipelineState(mPSOs["tess"].Get());
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Tessellation]);
 
 	// 渲染树
 	mCommandList->SetPipelineState(mPSOs["treeSprites"].Get());
@@ -291,7 +315,7 @@ void Demo::Draw()
 			mCommandList->ResourceBarrier(2, barriers);
 		}
 
-		mCommandList->ResolveSubresource(backBuffer, 0, mMSAARenderTarget.Get(), 0, mDXGIFormat);
+		mCommandList->ResolveSubresource(backBuffer, 0, mMSAARenderTarget.Get(), 0, mBackBufferFormat);
 
 		// Set render target for UI which is typically rendered without MSAA.
 		{
@@ -600,36 +624,79 @@ void Demo::BuildMaterials()
 
 void Demo::BuildRootSignature()
 {
-	CD3DX12_DESCRIPTOR_RANGE texTable;
-	texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
-
-	CD3DX12_ROOT_PARAMETER slotRootParameter[4];
-	slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
-	slotRootParameter[1].InitAsConstantBufferView(0);
-	slotRootParameter[2].InitAsConstantBufferView(1);
-	slotRootParameter[3].InitAsConstantBufferView(2);
-	auto staticSamplers = GetStaticSamplers();
-
-	CD3DX12_ROOT_SIGNATURE_DESC rootSignDesc(4, slotRootParameter,
-		(UINT)staticSamplers.size(), staticSamplers.data(),
-		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-
-	ComPtr<ID3DBlob> serializedRootSign = nullptr;
-	ComPtr<ID3DBlob> errorBlob = nullptr;
-	HRESULT hr = D3D12SerializeRootSignature(&rootSignDesc, D3D_ROOT_SIGNATURE_VERSION_1,
-		serializedRootSign.GetAddressOf(), errorBlob.GetAddressOf());
-
-	if (errorBlob != nullptr)
+	// Default RootSignature
 	{
-		::OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+		CD3DX12_DESCRIPTOR_RANGE texTable;
+		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+
+		CD3DX12_ROOT_PARAMETER slotRootParameter[4];
+		slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
+		slotRootParameter[1].InitAsConstantBufferView(0);
+		slotRootParameter[2].InitAsConstantBufferView(1);
+		slotRootParameter[3].InitAsConstantBufferView(2);
+		auto staticSamplers = GetStaticSamplers();
+
+		CD3DX12_ROOT_SIGNATURE_DESC rootSignDesc(4, slotRootParameter,
+			(UINT)staticSamplers.size(), staticSamplers.data(),
+			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+		ComPtr<ID3DBlob> serializedRootSign = nullptr;
+		ComPtr<ID3DBlob> errorBlob = nullptr;
+		HRESULT hr = D3D12SerializeRootSignature(&rootSignDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+			serializedRootSign.GetAddressOf(), errorBlob.GetAddressOf());
+
+		if (errorBlob != nullptr)
+		{
+			::OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+		}
+
+		ThrowIfFailed(hr);
+
+		ThrowIfFailed(mD3D12Device->CreateRootSignature(0,
+			serializedRootSign->GetBufferPointer(),
+			serializedRootSign->GetBufferSize(),
+			IID_PPV_ARGS(mRootSignature.GetAddressOf())));
 	}
 
-	ThrowIfFailed(hr);
+	// Tessellation RootSignature
+	{
+		CD3DX12_DESCRIPTOR_RANGE texTable;
+		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
 
-	ThrowIfFailed(mD3D12Device->CreateRootSignature(0,
-		serializedRootSign->GetBufferPointer(),
-		serializedRootSign->GetBufferSize(),
-		IID_PPV_ARGS(mRootSignature.GetAddressOf())));
+		// Root parameter can be a table, root descriptor or root constants.
+		CD3DX12_ROOT_PARAMETER slotRootParameter[4];
+
+		// Perfomance TIP: Order from most frequent to least frequent.
+		slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
+		slotRootParameter[1].InitAsConstantBufferView(0);
+		slotRootParameter[2].InitAsConstantBufferView(1);
+		slotRootParameter[3].InitAsConstantBufferView(2);
+
+		auto staticSamplers = GetStaticSamplers();
+
+		// A root signature is an array of root parameters.
+		CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(4, slotRootParameter,
+			(UINT)staticSamplers.size(), staticSamplers.data(),
+			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+		// create a root signature with a single slot which points to a descriptor range consisting of a single constant buffer
+		ComPtr<ID3DBlob> serializedRootSig = nullptr;
+		ComPtr<ID3DBlob> errorBlob = nullptr;
+		HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+			serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
+
+		if (errorBlob != nullptr)
+		{
+			::OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+		}
+		ThrowIfFailed(hr);
+
+		ThrowIfFailed(mD3D12Device->CreateRootSignature(
+			0,
+			serializedRootSig->GetBufferPointer(),
+			serializedRootSig->GetBufferSize(),
+			IID_PPV_ARGS(mTessellationRootSignature.GetAddressOf())));
+	}
 }
 
 void Demo::BuildShadersAndInputLayout()
@@ -647,13 +714,23 @@ void Demo::BuildShadersAndInputLayout()
 	mShaders["treeSpriteGS"] = D3D12Util::CompileShader(L"Shaders\\TreeSprite.hlsl", nullptr, "GS", "gs_5_0");
 	mShaders["treeSpritePS"] = D3D12Util::CompileShader(L"Shaders\\TreeSprite.hlsl", alphaTestDefines, "PS", "ps_5_0");
 
-	mInputLayout.clear();
-	mInputLayout.insert(mInputLayout.end(), std::begin(InputLayouts::inputLayoutPosTexNorCol), std::end(InputLayouts::inputLayoutPosTexNorCol));
+	mShaders["tessVS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "VS", "vs_5_0");
+	mShaders["tessHS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "HS", "hs_5_0");
+	mShaders["tessDS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "DS", "ds_5_0");
+	mShaders["tessPS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "PS", "ps_5_0");
+
+	mDefaultInputLayout.clear();
+	mDefaultInputLayout.insert(mDefaultInputLayout.end(), std::begin(InputLayouts::inputLayoutPosTexNorCol), std::end(InputLayouts::inputLayoutPosTexNorCol));
 
 	mTreeSpriteInputLayout =
 	{
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 		{ "SIZE", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	};
+
+	mTessellationInputLayout =
+	{
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 	};
 }
 
@@ -866,6 +943,50 @@ void Demo::BuildGeometry()
 	}
 }
 
+void Demo::BuildLandGeometry()
+{
+	std::array<XMFLOAT3, 4> vertices =
+	{
+		XMFLOAT3(-10.0f, 0.0f, +10.0f),
+		XMFLOAT3(+10.0f, 0.0f, +10.0f),
+		XMFLOAT3(-10.0f, 0.0f, -10.0f),
+		XMFLOAT3(+10.0f, 0.0f, -10.0f)
+	};
+
+	std::array<std::int16_t, 4> indices = { 0, 1, 2, 3 };
+
+	const UINT vbByteSize = vertices.size() * sizeof(XMFLOAT3);
+	const UINT ibByteSize = indices.size() * sizeof(std::int16_t);
+
+	auto geo = std::make_unique<MeshGeometry>();
+	geo->Name = "quadpatchGeo";
+
+	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+
+	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+
+	geo->VertexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
+		mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
+
+	geo->IndexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
+		mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+
+	geo->VertexByteStride = sizeof(XMFLOAT3);
+	geo->VertexBufferByteSize = vbByteSize;
+	geo->IndexFormat = DXGI_FORMAT_R16_UINT;
+	geo->IndexBufferByteSize = ibByteSize;
+
+	SubmeshGeometry submesh;
+	submesh.IndexCount = 4;
+	submesh.StartIndexLocation = 0;
+	submesh.BaseVertexLocation = 0;
+
+	geo->DrawArgs["quadpatch"] = submesh;
+	mGeometries[geo->Name] = std::move(geo);
+}
+
 void Demo::BuildFrameResources()
 {
 	for (int i = 0; i < gNumFrameResources; ++i)
@@ -987,18 +1108,30 @@ void Demo::BuildRenderItems()
 	treeSpritesRitem->BaseVertexLocation = treeSpritesRitem->Geo->DrawArgs["points"].BaseVertexLocation;
 	mRitemLayer[(int)RenderLayer::AlphaTestedTreeSprites].push_back(treeSpritesRitem.get());
 
+	auto quadPatchRitem = std::make_unique<RenderItem>();
+	quadPatchRitem->World = MathHelper::Identity4x4();
+	quadPatchRitem->ObjCBIndex = 5;
+	quadPatchRitem->Mat = mMaterials["floor"].get();
+	quadPatchRitem->Geo = mGeometries["quadpatchGeo"].get();
+	quadPatchRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST;
+	quadPatchRitem->IndexCount = quadPatchRitem->Geo->DrawArgs["quadpatch"].IndexCount;
+	quadPatchRitem->StartIndexLocation = quadPatchRitem->Geo->DrawArgs["quadpatch"].StartIndexLocation;
+	quadPatchRitem->BaseVertexLocation = quadPatchRitem->Geo->DrawArgs["quadpatch"].BaseVertexLocation;
+	mRitemLayer[(int)RenderLayer::Tessellation].push_back(quadPatchRitem.get());
+
 	mAllRitems.push_back(std::move(gridRitem));
 	mAllRitems.push_back(std::move(boxRitem));
 	mAllRitems.push_back(std::move(reflectedBoxRitem));
 	mAllRitems.push_back(std::move(mirrorItem));
 	mAllRitems.push_back(std::move(treeSpritesRitem));
+	mAllRitems.push_back(std::move(quadPatchRitem));
 }
 
 void Demo::BuildPSO()
 {
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC opaquePsoDesc;
 	ZeroMemory(&opaquePsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
-	opaquePsoDesc.InputLayout = { mInputLayout.data(), (UINT)mInputLayout.size() };
+	opaquePsoDesc.InputLayout = { mDefaultInputLayout.data(), (UINT)mDefaultInputLayout.size() };
 	opaquePsoDesc.pRootSignature = mRootSignature.Get();
 	opaquePsoDesc.VS =
 	{
@@ -1016,7 +1149,7 @@ void Demo::BuildPSO()
 	opaquePsoDesc.SampleMask = UINT_MAX;
 	opaquePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	opaquePsoDesc.NumRenderTargets = 1;
-	opaquePsoDesc.RTVFormats[0] = mDXGIFormat;
+	opaquePsoDesc.RTVFormats[0] = mBackBufferFormat;
 	opaquePsoDesc.SampleDesc.Count = mEnableMSAA ? mSampleCount : 1;
 	opaquePsoDesc.SampleDesc.Quality = mEnableMSAA ? (mMSAAQualityLevels - 1) : 0;
 	opaquePsoDesc.DSVFormat = mDepthStencilFormat;
@@ -1135,6 +1268,46 @@ void Demo::BuildPSO()
 	treeSpritePsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
 
 	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&treeSpritePsoDesc, IID_PPV_ARGS(&mPSOs["treeSprites"])));
+
+	//
+	// PSO for tessellation sprites
+	//
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC tessellationPsoDesc;
+	ZeroMemory(&tessellationPsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
+	tessellationPsoDesc.InputLayout = { mTessellationInputLayout.data(), (UINT)mTessellationInputLayout.size() };
+	tessellationPsoDesc.pRootSignature = mTessellationRootSignature.Get();
+	tessellationPsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["tessVS"]->GetBufferPointer()),
+		mShaders["tessVS"]->GetBufferSize()
+	};
+	tessellationPsoDesc.HS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["tessHS"]->GetBufferPointer()),
+		mShaders["tessHS"]->GetBufferSize()
+	};
+	tessellationPsoDesc.DS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["tessDS"]->GetBufferPointer()),
+		mShaders["tessDS"]->GetBufferSize()
+	};
+	tessellationPsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["tessPS"]->GetBufferPointer()),
+		mShaders["tessPS"]->GetBufferSize()
+	};
+	tessellationPsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	tessellationPsoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
+	tessellationPsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	tessellationPsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	tessellationPsoDesc.SampleMask = UINT_MAX;
+	tessellationPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
+	tessellationPsoDesc.NumRenderTargets = 1;
+	tessellationPsoDesc.RTVFormats[0] = mBackBufferFormat;
+	tessellationPsoDesc.SampleDesc.Count = mEnableMSAA ? mSampleCount : 1;
+	tessellationPsoDesc.SampleDesc.Quality = mEnableMSAA ? (mMSAAQualityLevels - 1) : 0;
+	tessellationPsoDesc.DSVFormat = mDepthStencilFormat;
+	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&tessellationPsoDesc, IID_PPV_ARGS(&mPSOs["tess"])));
 }
 
 void Demo::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)
@@ -1222,4 +1395,158 @@ std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> Demo::GetStaticSamplers()
 		pointWrap, pointClamp,
 		linearWrap, linearClamp,
 		anisotropicWrap, anisotropicClamp };
+}
+
+void Demo::BuildComputeBuffers()
+{
+	std::vector<Data> dataA(NumDataElements);
+	std::vector<Data> dataB(NumDataElements);
+	for (int i = 0; i < NumDataElements; i++)
+	{
+		dataA[i].v1 = XMFLOAT3(i, i, i);
+		dataA[i].v2 = XMFLOAT2(i, 0);
+
+		dataB[i].v1 = XMFLOAT3(-i, i, 0.0f);
+		dataB[i].v2 = XMFLOAT2(0, -i);
+	}
+
+	UINT64 byteSize = NumDataElements * sizeof(Data);
+
+	mComputeInputBufferA = D3D12Util::CreateDefaultBuffer(
+		mD3D12Device.Get(),
+		mCommandList.Get(),
+		dataA.data(),
+		byteSize,
+		mComputeInputUploadBufferA);
+
+	mComputeInputBufferB = D3D12Util::CreateDefaultBuffer(
+		mD3D12Device.Get(),
+		mCommandList.Get(),
+		dataB.data(),
+		byteSize,
+		mComputeInputUploadBufferB);
+
+	mD3D12Device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(byteSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+		nullptr,
+		IID_PPV_ARGS(&mComputeOutputBuffer));
+
+	mD3D12Device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(byteSize),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		nullptr,
+		IID_PPV_ARGS(&mComputeReadBackBuffer));
+}
+
+void Demo::BuildComputeRootSignature()
+{
+	CD3DX12_ROOT_PARAMETER slotRootParameter[3];
+
+	slotRootParameter[0].InitAsShaderResourceView(0);
+	slotRootParameter[1].InitAsShaderResourceView(1);
+	slotRootParameter[2].InitAsUnorderedAccessView(0);
+
+	CD3DX12_ROOT_SIGNATURE_DESC rootSignDesc(3, slotRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+	// create a root signature with a single slot which points to a descriptor range consisting of a single constant buffer
+	ComPtr<ID3DBlob> serializedRootSig = nullptr;
+	ComPtr<ID3DBlob> errorBlob = nullptr;
+	HRESULT hr = D3D12SerializeRootSignature(&rootSignDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+		serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
+
+	if (errorBlob != nullptr)
+	{
+		::OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+	}
+
+	ThrowIfFailed(hr);
+
+	mD3D12Device->CreateRootSignature(
+		0,
+		serializedRootSig->GetBufferPointer(),
+		serializedRootSig->GetBufferSize(),
+		IID_PPV_ARGS(mComputeRootSignature.GetAddressOf()));
+}
+
+void Demo::BuildComputeShadersAndInputLayout()
+{
+	mShaders["vecAddCS"] = D3D12Util::CompileShader(L"Shaders\\VecAdd.hlsl", nullptr, "CS", "cs_5_0");
+}
+
+void Demo::BuildComputePSOs()
+{
+	D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
+	computePsoDesc.pRootSignature = mComputeRootSignature.Get();
+	computePsoDesc.CS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["vecAddCS"]->GetBufferPointer()),
+		mShaders["vecAddCS"]->GetBufferSize()
+	};
+	computePsoDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
+	mD3D12Device->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&mPSOs["vecAdd"]));
+}
+
+void Demo::DoComputeWork()
+{
+	mCommandAllocator->Reset();
+
+	mCommandList->Reset(mCommandAllocator.Get(), mPSOs["vecAdd"].Get());
+
+	mCommandList->SetComputeRootSignature(mComputeRootSignature.Get());
+
+	mCommandList->SetComputeRootShaderResourceView(0, mComputeInputBufferA->GetGPUVirtualAddress());
+	mCommandList->SetComputeRootShaderResourceView(1, mComputeInputBufferB->GetGPUVirtualAddress());
+	mCommandList->SetComputeRootUnorderedAccessView(2, mComputeOutputBuffer->GetGPUVirtualAddress());
+
+	mCommandList->Dispatch(1, 1, 1);
+
+	CD3DX12_RESOURCE_BARRIER barrier[1] =
+	{
+		CD3DX12_RESOURCE_BARRIER::Transition(
+			mComputeOutputBuffer.Get(),
+			D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+			D3D12_RESOURCE_STATE_COPY_SOURCE)
+	};
+
+	mCommandList->ResourceBarrier(
+		1,
+		barrier
+	);
+
+	mCommandList->CopyResource(mComputeReadBackBuffer.Get(), mComputeOutputBuffer.Get());
+
+	mCommandList->ResourceBarrier(
+		1,
+		&CD3DX12_RESOURCE_BARRIER::Transition(
+			mComputeOutputBuffer.Get(),
+			D3D12_RESOURCE_STATE_COPY_SOURCE,
+			D3D12_RESOURCE_STATE_COMMON)
+	);
+
+	mCommandList->Close();
+
+	// Add the command list to the queue for execution.
+	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
+	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+
+	// Wait for the work to finish.
+	FlushCommandQueue();
+
+	Data* mappedData = nullptr;
+	mComputeReadBackBuffer->Map(0, nullptr, reinterpret_cast<void**>(&mappedData));
+
+	std::ofstream fout("results.txt");
+
+	for (int i = 0; i < NumDataElements; ++i)
+	{
+		fout << "(" << mappedData[i].v1.x << ", " << mappedData[i].v1.y << ", " << mappedData[i].v1.z <<
+			", " << mappedData[i].v2.x << ", " << mappedData[i].v2.y << ")" << std::endl;
+	}
+
+	mComputeReadBackBuffer->Unmap(0, nullptr);
 }

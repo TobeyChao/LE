@@ -74,7 +74,8 @@ protected:
 	ComPtr<IDXGIFactory4> mDXGIFactory = nullptr;
 	ComPtr<ID3D12Device> mD3D12Device = nullptr;
 	ComPtr<ID3D12Fence> mFence = nullptr;
-	DXGI_FORMAT mDXGIFormat;
+
+	DXGI_FORMAT mBackBufferFormat;
 
 	bool mEnableMSAA = true;
 	UINT mMSAAQualityLevels = 0;
