@@ -18,6 +18,9 @@
     <Filter Include="ImGui\Src">
       <UniqueIdentifier>{1bf34bef-e5af-4dbe-9af9-ba6c4296fa82}</UniqueIdentifier>
     </Filter>
+    <Filter Include="资源文件\Shaders">
+      <UniqueIdentifier>{bea264dd-f950-4778-ba4f-dad349e8dce0}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="TSingleton.h">
@@ -154,5 +157,22 @@
     <ClCompile Include="imgui_tables.cpp">
       <Filter>ImGui</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Shaders\Tessellation.hlsl">
+      <Filter>资源文件\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\TreeSprite.hlsl">
+      <Filter>资源文件\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\VecAdd.hlsl">
+      <Filter>资源文件\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Color.hlsl">
+      <Filter>资源文件\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\LightingUtil.hlsl">
+      <Filter>资源文件\Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

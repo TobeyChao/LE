@@ -75,14 +75,29 @@ struct PatchTess
 // 常量外壳着色器
 PatchTess ConstantHS(InputPatch<VertexOut, 4> patch, uint patchID : SV_PRIMITIVEID)
 {
-    PatchTess pt;
-    pt.EdgeTess[0] = 3;
-    pt.EdgeTess[1] = 3;
-    pt.EdgeTess[2] = 3;
-    pt.EdgeTess[3] = 3;
+    // 首先求出四个控制点的中点
+    float3 centerL = 0.25f * (
+    patch[0].PosL +
+    patch[1].PosL +
+    patch[2].PosL +
+    patch[3].PosL
+    );
 
-    pt.InsideTess[0] = 3;
-    pt.InsideTess[1] = 3;
+    float3 centerW = mul(float4(centerL, 1.0f), gWorld);
+    float d = distance(centerW, gEyePosW);
+
+    const float near = 10.0f;
+    const float far = 80.0f;
+    float tess = 64.0f * saturate((far - d) / (far - near));
+
+    PatchTess pt;
+    pt.EdgeTess[0] = tess;
+    pt.EdgeTess[1] = tess;
+    pt.EdgeTess[2] = tess;
+    pt.EdgeTess[3] = tess;
+
+    pt.InsideTess[0] = tess;
+    pt.InsideTess[1] = tess;
 
     return pt;
 }
@@ -130,7 +145,7 @@ struct DomainOut
 
 [domain("quad")]
 // 域着色器
-// 镶嵌器阶段输出新建的所有顶点和三角形,此阶段创建的顶点都会逐一调用域着色器
+// 镶嵌器阶段输出新建的所有顶点和三角形,镶嵌器阶段创建的顶点都会逐一调用域着色器
 // 可以把它看作镶嵌处理阶段后的顶点着色器
 DomainOut DS(PatchTess patchTess,
 float2 uv : SV_DOMAINLOCATION,
@@ -141,6 +156,8 @@ const OutputPatch<HullOut, 4> quad)
     float3 v1 = lerp(quad[0].PosL, quad[1].PosL, uv.x);
     float3 v2 = lerp(quad[2].PosL, quad[3].PosL, uv.x);
     float3 p = lerp(v1, v2, uv.y);
+
+    p.y = 0.3 * (p.z * sin(p.x) + p.x * cos(p.z)) + 5.0f;
 
     float4 posW = mul(float4(p, 1.0f), gWorld);
     dout.PosH = mul(posW, gViewProj);
