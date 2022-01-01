@@ -174,5 +174,11 @@
     <FxCompile Include="Shaders\LightingUtil.hlsl">
       <Filter>资源文件\Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\BezierTessellation.hlsl">
+      <Filter>资源文件\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\BezierUtil.hlsl">
+      <Filter>资源文件\Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

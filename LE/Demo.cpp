@@ -16,7 +16,7 @@
 bool show_demo_window = false;
 bool show_another_window = false;
 bool show_wireframe = false;
-XMVECTORF32 clear_color = DirectX::Colors::Azure;
+XMVECTORF32 clear_color = DirectX::Colors::DarkSlateGray;
 ImFont* font;
 
 Demo::~Demo()
@@ -714,10 +714,15 @@ void Demo::BuildShadersAndInputLayout()
 	mShaders["treeSpriteGS"] = D3D12Util::CompileShader(L"Shaders\\TreeSprite.hlsl", nullptr, "GS", "gs_5_0");
 	mShaders["treeSpritePS"] = D3D12Util::CompileShader(L"Shaders\\TreeSprite.hlsl", alphaTestDefines, "PS", "ps_5_0");
 
-	mShaders["tessVS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "VS", "vs_5_0");
-	mShaders["tessHS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "HS", "hs_5_0");
-	mShaders["tessDS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "DS", "ds_5_0");
-	mShaders["tessPS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "PS", "ps_5_0");
+	//mShaders["tessVS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "VS", "vs_5_0");
+	//mShaders["tessHS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "HS", "hs_5_0");
+	//mShaders["tessDS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "DS", "ds_5_0");
+	//mShaders["tessPS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "PS", "ps_5_0");
+
+	mShaders["tessVS"] = D3D12Util::CompileShader(L"Shaders\\BezierTessellation.hlsl", nullptr, "VS", "vs_5_0");
+	mShaders["tessHS"] = D3D12Util::CompileShader(L"Shaders\\BezierTessellation.hlsl", nullptr, "HS", "hs_5_0");
+	mShaders["tessDS"] = D3D12Util::CompileShader(L"Shaders\\BezierTessellation.hlsl", nullptr, "DS", "ds_5_0");
+	mShaders["tessPS"] = D3D12Util::CompileShader(L"Shaders\\BezierTessellation.hlsl", nullptr, "PS", "ps_5_0");
 
 	mDefaultInputLayout.clear();
 	mDefaultInputLayout.insert(mDefaultInputLayout.end(), std::begin(InputLayouts::inputLayoutPosTexNorCol), std::end(InputLayouts::inputLayoutPosTexNorCol));
@@ -945,15 +950,40 @@ void Demo::BuildGeometry()
 
 void Demo::BuildLandGeometry()
 {
-	std::array<XMFLOAT3, 4> vertices =
+	std::array<XMFLOAT3, 16> vertices =
 	{
-		XMFLOAT3(-10.0f, 0.0f, +10.0f),
-		XMFLOAT3(+10.0f, 0.0f, +10.0f),
-		XMFLOAT3(-10.0f, 0.0f, -10.0f),
-		XMFLOAT3(+10.0f, 0.0f, -10.0f)
+		// Row 0
+		XMFLOAT3(-10.0f, -10.0f, +15.0f),
+		XMFLOAT3(-5.0f,  0.0f, +15.0f),
+		XMFLOAT3(+5.0f,  0.0f, +15.0f),
+		XMFLOAT3(+10.0f, 0.0f, +15.0f),
+
+		// Row 1
+		XMFLOAT3(-15.0f, 0.0f, +5.0f),
+		XMFLOAT3(-5.0f,  0.0f, +5.0f),
+		XMFLOAT3(+5.0f,  20.0f, +5.0f),
+		XMFLOAT3(+15.0f, 0.0f, +5.0f),
+
+		// Row 2
+		XMFLOAT3(-15.0f, 0.0f, -5.0f),
+		XMFLOAT3(-5.0f,  0.0f, -5.0f),
+		XMFLOAT3(+5.0f,  0.0f, -5.0f),
+		XMFLOAT3(+15.0f, 0.0f, -5.0f),
+
+		// Row 3
+		XMFLOAT3(-10.0f, 10.0f, -15.0f),
+		XMFLOAT3(-5.0f,  0.0f, -15.0f),
+		XMFLOAT3(+5.0f,  0.0f, -15.0f),
+		XMFLOAT3(+25.0f, 10.0f, -15.0f)
 	};
 
-	std::array<std::int16_t, 4> indices = { 0, 1, 2, 3 };
+	std::array<std::int16_t, 16> indices =
+	{
+		0, 1, 2, 3,
+		4, 5, 6, 7,
+		8, 9, 10, 11,
+		12, 13, 14, 15
+	};
 
 	const UINT vbByteSize = vertices.size() * sizeof(XMFLOAT3);
 	const UINT ibByteSize = indices.size() * sizeof(std::int16_t);
@@ -979,7 +1009,7 @@ void Demo::BuildLandGeometry()
 	geo->IndexBufferByteSize = ibByteSize;
 
 	SubmeshGeometry submesh;
-	submesh.IndexCount = 4;
+	submesh.IndexCount = 16;
 	submesh.StartIndexLocation = 0;
 	submesh.BaseVertexLocation = 0;
 
@@ -1113,7 +1143,7 @@ void Demo::BuildRenderItems()
 	quadPatchRitem->ObjCBIndex = 5;
 	quadPatchRitem->Mat = mMaterials["floor"].get();
 	quadPatchRitem->Geo = mGeometries["quadpatchGeo"].get();
-	quadPatchRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST;
+	quadPatchRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_16_CONTROL_POINT_PATCHLIST;
 	quadPatchRitem->IndexCount = quadPatchRitem->Geo->DrawArgs["quadpatch"].IndexCount;
 	quadPatchRitem->StartIndexLocation = quadPatchRitem->Geo->DrawArgs["quadpatch"].StartIndexLocation;
 	quadPatchRitem->BaseVertexLocation = quadPatchRitem->Geo->DrawArgs["quadpatch"].BaseVertexLocation;

@@ -497,7 +497,7 @@ void D3D12App::CreateRenderResource()
 
 	D3D12_CLEAR_VALUE msaaClear = {};
 	msaaClear.Format = mBackBufferFormat;
-	memcpy(msaaClear.Color, DirectX::Colors::Azure, sizeof(float) * 4);
+	memcpy(msaaClear.Color, DirectX::Colors::DarkSlateGray, sizeof(float) * 4);
 
 	mD3D12Device->CreateCommittedResource(
 		&heapProperties,
