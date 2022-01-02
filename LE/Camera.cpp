@@ -1,60 +1,29 @@
 #include "Camera.h"
 #include "GameTimer.h"
 
-Camera::Camera()
+void Camera::SetLens(float fov, float aspect, float zn, float zf)
 {
+	mFovY = fov;
+	mAspect = aspect;
+	mNearZ = zn;
+	mFarZ = zf;
+
+	mProj = XMMatrixPerspectiveFovLH(mFovY, mAspect, mNearZ, mFarZ);
 }
 
-Camera::~Camera()
+void Camera::Walk(float d)
 {
-}
-
-void Camera::MoveForward()
-{
-	mPosition = DirectX::XMVectorMultiplyAdd(mForward,
-		{
-			mSpeed * GameTimer::GetInstance().DeltaTime(),
-			mSpeed * GameTimer::GetInstance().DeltaTime(),
-			mSpeed * GameTimer::GetInstance().DeltaTime()
-		},
-		mPosition);
+	XMStoreFloat3(&mPosition, XMLoadFloat3(&mPosition) + XMLoadFloat3(&mForward) * d);
 	mDirty = true;
 }
 
-void Camera::MoveBack()
+void Camera::Strafe(float d)
 {
-	mPosition = DirectX::XMVectorMultiplyAdd(mForward,
-		{
-			-mSpeed * GameTimer::GetInstance().DeltaTime(),
-			-mSpeed * GameTimer::GetInstance().DeltaTime(),
-			-mSpeed * GameTimer::GetInstance().DeltaTime()
-		}, mPosition);
+	XMStoreFloat3(&mPosition, XMLoadFloat3(&mPosition) + XMLoadFloat3(&mRight) * d);
 	mDirty = true;
 }
 
-void Camera::MoveLeft()
-{
-	mPosition = DirectX::XMVectorMultiplyAdd(mRight,
-		{
-			-mSpeed * GameTimer::GetInstance().DeltaTime(),
-			-mSpeed * GameTimer::GetInstance().DeltaTime(),
-			-mSpeed * GameTimer::GetInstance().DeltaTime()
-		}, mPosition);
-	mDirty = true;
-}
-
-void Camera::MoveRight()
-{
-	mPosition = DirectX::XMVectorMultiplyAdd(mRight,
-		{
-			mSpeed * GameTimer::GetInstance().DeltaTime(),
-			mSpeed * GameTimer::GetInstance().DeltaTime(),
-			mSpeed * GameTimer::GetInstance().DeltaTime()
-		}, mPosition);
-	mDirty = true;
-}
-
-void Camera::SetPitch(float pitch)
+void Camera::Pitch(float pitch)
 {
 	if (mPitch == pitch)
 	{
@@ -64,7 +33,7 @@ void Camera::SetPitch(float pitch)
 	mDirty = true;
 }
 
-void Camera::SetYaw(float yaw)
+void Camera::Yaw(float yaw)
 {
 	if (mYaw == yaw)
 	{
@@ -74,8 +43,12 @@ void Camera::SetYaw(float yaw)
 	mDirty = true;
 }
 
-void Camera::SetRoll(float roll)
+void Camera::Roll(float roll)
 {
+	if (mRoll == roll)
+	{
+		return;
+	}
 	mRoll = roll;
 	mDirty = true;
 }
@@ -86,26 +59,16 @@ void Camera::ComputeInfo()
 	{
 		return;
 	}
+
 	// 这里默认以：
 	// z轴正方向为forward
 	// y轴正方向为up
 	// x轴正方向为right
-
-	//float cosP = cosf(mPitch);
-	//float cosY = cosf(mYaw);
-	//float cosR = cosf(mRoll);
-	//float sinP = sinf(mPitch);
-	//float sinY = sinf(mYaw);
-	//float sinR = sinf(mRoll);
-
-	//mForward = DirectX::XMVectorSet(sinY * cosP, -sinP, cosP * cosY, 1.0f);
-	
 	auto rotateMat = DirectX::XMMatrixRotationRollPitchYaw(mPitch, mYaw, mRoll);
-	mForward = DirectX::XMVector3TransformNormal(mDefaultForward, rotateMat);
-	mUp = DirectX::XMVector3TransformNormal(mDefaultUp, rotateMat);
-	mRight = DirectX::XMVector3Cross(mUp, mForward);
-	DirectX::XMVECTOR at = DirectX::XMVectorAdd(mPosition, mForward);
-	mViewMat = DirectX::XMMatrixLookToLH(mPosition, mForward, mUp);
+	XMStoreFloat3(&mForward, DirectX::XMVector3TransformNormal(mDefaultForward, rotateMat));
+	XMStoreFloat3(&mUp, DirectX::XMVector3TransformNormal(mDefaultUp, rotateMat));
+	XMStoreFloat3(&mRight, DirectX::XMVector3Cross(XMLoadFloat3(&mUp), XMLoadFloat3(&mForward)));
+	mView = DirectX::XMMatrixLookToLH(XMLoadFloat3(&mPosition), XMLoadFloat3(&mForward), XMLoadFloat3(&mUp));
 
 	mDirty = false;
 }

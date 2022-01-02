@@ -56,6 +56,8 @@ enum class RenderLayer : int
 class Demo : public D3D12App
 {
 public:
+	Demo();
+
 	~Demo();
 
 	void Initialize(HWND hwnd, int clientWidth, int clientHeight) override;
@@ -147,19 +149,16 @@ private:
 #pragma region Camera
 	std::unordered_map<std::string, std::unique_ptr<Camera>> mCameras;
 
-	XMFLOAT3 mEyePos = { 0.0f, 0.0f, 0.0f };
-	XMFLOAT4X4 mView = MathHelper::Identity4x4();
-	XMFLOAT4X4 mProj = MathHelper::Identity4x4();
-
 	float mYaw = 0;
 	float mPitch = XMConvertToRadians(15);
-	float mRadius = 100.0f;
 
-	float mSunTheta = 1.25f * XM_PI;
-	float mSunPhi = XM_PIDIV4;
+	float mCamMoveSpeed = 20.f;
 
 	POINT mLastMousePos;
 #pragma endregion
+
+	float mSunTheta = 1.25f * XM_PI;
+	float mSunPhi = XM_PIDIV4;
 
 	int NumDataElements = 32;
 	ComPtr<ID3D12RootSignature> mComputeRootSignature = nullptr;

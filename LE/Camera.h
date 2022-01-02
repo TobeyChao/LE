@@ -1,48 +1,142 @@
 #pragma once
 #include "D3D12Util.h"
 
+using namespace DirectX;
+
 class Camera
 {
 public:
-	Camera();
-	~Camera();
+	// 位置
+	inline XMVECTOR GetPosition() const
+	{
+		return XMLoadFloat3(&mPosition);
+	}
+	inline XMFLOAT3 GetPosition3f() const
+	{
+		return mPosition;
+	}
+	inline void SetPosition(float x, float y, float z)
+	{
+		mPosition = XMFLOAT3(x, y, z);
+	}
+	inline void SetPosition3f(const XMFLOAT3& pos)
+	{
+		mPosition = pos;
+	}
 
-	void MoveForward();
+	// 基向量
+	XMVECTOR GetRight() const
+	{
+		return XMLoadFloat3(&mRight);
+	}
+	XMFLOAT3 GetRight3f() const
+	{
+		return mRight;
+	}
+	XMVECTOR GetUp() const
+	{
+		return XMLoadFloat3(&mUp);
+	}
+	XMFLOAT3 GetUp3f() const
+	{
+		return mUp;
+	}
+	XMVECTOR GetLook() const
+	{
+		return XMLoadFloat3(&mForward);
+	}
+	XMFLOAT3 GetLook3f() const
+	{
+		return mForward;
+	}
 
-	void MoveBack();
+	// 视锥体属性
+	float GetNearZ() const
+	{
+		return mNearZ;
+	}
+	float GetFarZ() const
+	{
+		return mFarZ;
+	}
+	float GetAspect() const
+	{
+		return mAspect;
+	}
+	float GetFovY() const
+	{
+		return mFovY;
+	}
+	float GetFovX() const
+	{
+		return 0.0f;
+	}
 
-	void MoveLeft();
+	// 获取近远裁剪面的大小
+	float GetNearWindowWidth() const
+	{
+		return 0.0f;
+	}
+	float GetNearWindowHeight() const
+	{
+		return 0.0f;
+	}
+	float GetFarWindowWidth() const
+	{
+		return 0.0f;
+	}
+	float GetFarWindowHeight() const
+	{
+		return 0.0f;
+	}
 
-	void MoveRight();
+	// 矩阵
+	inline const DirectX::XMMATRIX& GetViewMatrix() const
+	{
+		return mView;
+	}
+	inline const DirectX::XMMATRIX& GetProjMatrix() const
+	{
+		return mProj;
+	}
 
-	void SetPitch(float pitch);
-	void SetYaw(float yaw);
-	void SetRoll(float roll);
+	// 设置视锥体
+	void SetLens(float fov, float aspect, float zn, float zf);
+
+	// 移动摄像机
+	void Walk(float d);
+	void Strafe(float d);
+
+	// 旋转摄像机
+	void Pitch(float pitch);
+	void Yaw(float yaw);
+	void Roll(float roll);
 
 	void ComputeInfo();
 
-	inline const DirectX::XMVECTOR& GetCameraPosition() const { return mPosition; }
-
-	inline const DirectX::XMMATRIX& GetViewMatrix() const { return mViewMat; }
 private:
-	float mSpeed = 20.0;
-
 	bool mDirty = true;
+
+	float mFovY;
+	float mAspect;
+	float mNearZ;
+	float mFarZ;
 
 	float mPitch = 0;
 	float mYaw = 0;
 	float mRoll = 0;
 
 	// Camera coordinate system with coordinates relative to world space.
-	DirectX::XMVECTOR mPosition = { 0.0f, 5.0f, -10.0f };
-	DirectX::XMVECTOR mRight = { 1.0f, 0.0f, 0.0f };
-	DirectX::XMVECTOR mUp = { 0.0f, 1.0f, 0.0f };
-	DirectX::XMVECTOR mForward = { 0.0f, 0.0f, 1.0f };
+	DirectX::XMFLOAT3 mPosition = { 0.0f, 5.0f, 0.0f };
 
-	DirectX::XMVECTOR mDefaultPosition = { 0.0f, 5.0f, -10.0f };
-	DirectX::XMVECTOR mDefaultRight = { 1.0f, 0.0f, 0.0f };
-	DirectX::XMVECTOR mDefaultUp = { 0.0f, 1.0f, 0.0f };
-	DirectX::XMVECTOR mDefaultForward = { 0.0f, 0.0f, 1.0f };
+	DirectX::XMFLOAT3 mRight = { 1.0f, 0.0f, 0.0f };
+	DirectX::XMFLOAT3 mUp = { 0.0f, 1.0f, 0.0f };
+	DirectX::XMFLOAT3 mForward = { 0.0f, 0.0f, 1.0f };
 
-	DirectX::XMMATRIX mViewMat;
+	DirectX::XMVECTOR mDefaultRight = { 1.0f, 0.0f, 0.0f, 1.0f };
+	DirectX::XMVECTOR mDefaultUp = { 0.0f, 1.0f, 0.0f, 1.0f };
+	DirectX::XMVECTOR mDefaultForward = { 0.0f, 0.0f, 1.0f, 1.0f };
+
+	DirectX::XMMATRIX mProj;
+	DirectX::XMMATRIX mView;
 };

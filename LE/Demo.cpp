@@ -19,6 +19,11 @@ bool show_wireframe = false;
 XMVECTORF32 clear_color = DirectX::Colors::DarkSlateGray;
 ImFont* font;
 
+Demo::Demo()
+{
+
+}
+
 Demo::~Demo()
 {
 	if (mD3D12Device != nullptr)
@@ -34,9 +39,9 @@ void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 
 	auto lib = ::LoadLibrary(L"assimp-vc142-mtd.dll");
 
-	D3D12App::Initialize(hwnd, clientWidth, clientHeight);
-
 	mCameras["MainCamera"] = std::make_unique<Camera>();
+
+	D3D12App::Initialize(hwnd, clientWidth, clientHeight);
 
 #pragma region IMGUI
 
@@ -77,10 +82,6 @@ void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 
 	font = io.Fonts->AddFontFromFileTTF("Fonts\\Zpix.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
 	IM_ASSERT(font != NULL);
-
-	mEyePos = { 0.0f, 0.0f, 0.0f };
-	XMStoreFloat4x4(&mView, XMMatrixIdentity());
-	XMStoreFloat4x4(&mProj, XMMatrixIdentity());
 
 	ThrowIfFailed(mCommandList->Reset(mCommandAllocator.Get(), nullptr));
 
@@ -136,8 +137,7 @@ void Demo::OnResize()
 {
 	D3D12App::OnResize();
 	// The window resized, so update the aspect ratio and recompute the projection matrix.
-	XMMATRIX P = XMMatrixPerspectiveFovLH(XM_PIDIV4, static_cast<float>(mClientWidth) / mClientHeight, 0.1f, 1000.0f);
-	XMStoreFloat4x4(&mProj, P);
+	mCameras["MainCamera"]->SetLens(XM_PIDIV4, static_cast<float>(mClientWidth) / mClientHeight, 0.1f, 1000.0f);
 }
 
 void Demo::Update()
@@ -368,22 +368,7 @@ void Demo::OnMouseMove(WPARAM btnState, int x, int y)
 		// Update angles based on input to orbit camera around box.
 		mYaw += dx;
 		mPitch += dy;
-
-		// Restrict the angle mPhi.
-		//mPhi = MathHelper::Clamp(mPhi, 0.1f, MathHelper::Pi - 0.1f);
 	}
-	//else if ((btnState & MK_LBUTTON) != 0)
-	//{
-	//	// Make each pixel correspond to 0.005 unit in the scene.
-	//	float dx = 0.005f * static_cast<float>(x - mLastMousePos.x);
-	//	float dy = 0.005f * static_cast<float>(y - mLastMousePos.y);
-
-	//	// Update the camera radius based on input.
-	//	mRadius += dx - dy;
-
-	//	// Restrict the radius.
-	//	mRadius = MathHelper::Clamp(mRadius, 3.0f, 150.0f);
-	//}
 
 	mLastMousePos.x = x;
 	mLastMousePos.y = y;
@@ -392,32 +377,21 @@ void Demo::OnMouseMove(WPARAM btnState, int x, int y)
 void Demo::ProcessInput()
 {
 	if (GetAsyncKeyState(0x57) & 0x8000)
-		mCameras["MainCamera"]->MoveForward();
+		mCameras["MainCamera"]->Walk(GameTimer::GetInstancePtr()->DeltaTime() * mCamMoveSpeed);
 	if (GetAsyncKeyState(0x53) & 0x8000)
-		mCameras["MainCamera"]->MoveBack();
+		mCameras["MainCamera"]->Walk(GameTimer::GetInstancePtr()->DeltaTime() * -mCamMoveSpeed);
 	if (GetAsyncKeyState(0x41) & 0x8000)
-		mCameras["MainCamera"]->MoveLeft();
+		mCameras["MainCamera"]->Strafe(GameTimer::GetInstancePtr()->DeltaTime() * -mCamMoveSpeed);
 	if (GetAsyncKeyState(0x44) & 0x8000)
-		mCameras["MainCamera"]->MoveRight();
+		mCameras["MainCamera"]->Strafe(GameTimer::GetInstancePtr()->DeltaTime() * mCamMoveSpeed);
 }
 
 void Demo::UpdateCamera()
 {
-	// Convert Spherical to Cartesian coordinates.
-	//mEyePos.x = mRadius * sinf(mPitch) * cosf(mYaw);
-	//mEyePos.z = mRadius * sinf(mPitch) * sinf(mYaw);
-	//mEyePos.y = mRadius * cosf(mPitch);
-
 	// Build the view matrix.
-	XMVECTOR pos = XMVectorSet(mEyePos.x, mEyePos.y, mEyePos.z, 1.0f);
-	XMVECTOR target = XMVectorZero();
-	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-	mCameras["MainCamera"]->SetPitch(mPitch);
-	mCameras["MainCamera"]->SetYaw(mYaw);
+	mCameras["MainCamera"]->Pitch(mPitch);
+	mCameras["MainCamera"]->Yaw(mYaw);
 	mCameras["MainCamera"]->ComputeInfo();
-	XMStoreFloat3(&mEyePos, mCameras["MainCamera"]->GetCameraPosition());
-	const XMMATRIX& view = mCameras["MainCamera"]->GetViewMatrix()/*XMMatrixLookAtLH(pos, target, up)*/;
-	XMStoreFloat4x4(&mView, view);
 }
 
 void Demo::UpdateObjectCBs()
@@ -447,8 +421,8 @@ void Demo::UpdateMainPassCB()
 {
 	// Update the pass buffer.
 	auto currPassCB = mCurrFrameResource->PassCB.get();
-	XMMATRIX proj = XMLoadFloat4x4(&mProj);
-	XMMATRIX view = XMLoadFloat4x4(&mView);
+	XMMATRIX proj = mCameras["MainCamera"]->GetProjMatrix();
+	XMMATRIX view = mCameras["MainCamera"]->GetViewMatrix();
 
 	XMMATRIX viewProj = XMMatrixMultiply(view, proj);
 	XMMATRIX invView = XMMatrixInverse(&XMMatrixDeterminant(view), view);
@@ -461,7 +435,7 @@ void Demo::UpdateMainPassCB()
 	XMStoreFloat4x4(&mMainPassCB.InvProj, XMMatrixTranspose(invProj));
 	XMStoreFloat4x4(&mMainPassCB.ViewProj, XMMatrixTranspose(viewProj));
 	XMStoreFloat4x4(&mMainPassCB.InvViewProj, XMMatrixTranspose(invViewProj));
-	mMainPassCB.EyePosW = mEyePos;
+	mMainPassCB.EyePosW = mCameras["MainCamera"]->GetPosition3f();
 	mMainPassCB.RenderTargetSize = XMFLOAT2{ (float)mClientWidth, (float)mClientHeight };
 	mMainPassCB.InvRenderTargetSize = { 1.0f / mClientWidth, 1.0f / mClientHeight };
 	mMainPassCB.NearZ = 1.0f;
