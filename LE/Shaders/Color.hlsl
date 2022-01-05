@@ -42,7 +42,8 @@ cbuffer cbPass : register(b1)
     Light gLights[MaxLights];
 };
 
-Texture2D gDiffuseMap[3] : register(t0);
+Texture2D gDiffuseMap[4] : register(t0);
+
 StructuredBuffer<MaterialData> gMaterialData : register(t0, space1);
 
 SamplerState gsamPointWrap  : register(s0);

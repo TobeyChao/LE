@@ -264,15 +264,15 @@ void Demo::Draw()
 	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
 
 	UINT passCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(PassConstants));
-
-	CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
-	mCommandList->SetGraphicsRootDescriptorTable(0, tex);
+	mCommandList->SetGraphicsRootConstantBufferView(1, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
 
 	auto matBuffer = mCurrFrameResource->MaterialCB->Resource();
-	mCommandList->SetGraphicsRootShaderResourceView(3, matBuffer->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootShaderResourceView(2, matBuffer->GetGPUVirtualAddress());
+
+	CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
+	mCommandList->SetGraphicsRootDescriptorTable(3, tex);
 
 	// 渲染不透明物体
-	mCommandList->SetGraphicsRootConstantBufferView(2, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
 	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque]);
 
 	//// 渲染树
@@ -285,20 +285,20 @@ void Demo::Draw()
 	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Mirrors]);
 
 	// 渲染镜子里的东西
-	mCommandList->SetGraphicsRootConstantBufferView(2, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress() + 1 * passCBByteSize);
+	mCommandList->SetGraphicsRootConstantBufferView(1, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress() + 1 * passCBByteSize);
 	mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
 	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Reflected]);
-	mCommandList->SetGraphicsRootConstantBufferView(2, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootConstantBufferView(1, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
 	mCommandList->OMSetStencilRef(0);
 
 	// 渲染透明物体
 	mCommandList->SetPipelineState(mPSOs["transparent"].Get());
 	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Transparent]);
 
-	// 渲染曲面细分
-	mCommandList->SetPipelineState(mPSOs["tess"].Get());
-	mCommandList->SetGraphicsRootSignature(mTessellationRootSignature.Get());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Tessellation]);
+	//// 渲染曲面细分
+	//mCommandList->SetPipelineState(mPSOs["tess"].Get());
+	//mCommandList->SetGraphicsRootSignature(mTessellationRootSignature.Get());
+	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Tessellation]);
 
 	if (mEnableMSAA)
 	{
@@ -608,13 +608,16 @@ void Demo::BuildRootSignature()
 	// Default RootSignature
 	{
 		CD3DX12_DESCRIPTOR_RANGE texTable;
-		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0);
+		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0, 0);
 
 		CD3DX12_ROOT_PARAMETER slotRootParameter[4];
-		slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
-		slotRootParameter[1].InitAsConstantBufferView(0);
-		slotRootParameter[2].InitAsConstantBufferView(1);
-		slotRootParameter[3].InitAsShaderResourceView(0, 1);
+
+		// Perfomance TIP: Order from most frequent to least frequent.
+		slotRootParameter[0].InitAsConstantBufferView(0);
+		slotRootParameter[1].InitAsConstantBufferView(1);
+		slotRootParameter[2].InitAsShaderResourceView(0, 1);
+		slotRootParameter[3].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
+
 		auto staticSamplers = GetStaticSamplers();
 
 		CD3DX12_ROOT_SIGNATURE_DESC rootSignDesc(4, slotRootParameter,
@@ -966,8 +969,8 @@ void Demo::BuildLandGeometry()
 		12, 13, 14, 15
 	};
 
-	const UINT vbByteSize = vertices.size() * sizeof(XMFLOAT3);
-	const UINT ibByteSize = indices.size() * sizeof(std::int16_t);
+	const size_t vbByteSize = vertices.size() * sizeof(XMFLOAT3);
+	const size_t ibByteSize = indices.size() * sizeof(std::int16_t);
 
 	auto geo = std::make_unique<MeshGeometry>();
 	geo->Name = "quadpatchGeo";
@@ -1354,10 +1357,8 @@ void Demo::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector
 void Demo::DrawRenderItemsNew(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)
 {
 	UINT objCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(ObjectConstants));
-	UINT matCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(MaterialData));
 
 	auto objectCB = mCurrFrameResource->ObjectCB->Resource();
-	auto matCB = mCurrFrameResource->MaterialCB->Resource();
 	// For each render item...
 	for (size_t i = 0; i < ritems.size(); ++i)
 	{
@@ -1368,7 +1369,7 @@ void Demo::DrawRenderItemsNew(ID3D12GraphicsCommandList* cmdList, const std::vec
 		cmdList->IASetPrimitiveTopology(ri->PrimitiveType);
 
 		D3D12_GPU_VIRTUAL_ADDRESS objAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
-		cmdList->SetGraphicsRootConstantBufferView(1, objAddress);
+		cmdList->SetGraphicsRootConstantBufferView(0, objAddress);
 
 		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
 	}
@@ -1437,11 +1438,11 @@ void Demo::BuildComputeBuffers()
 	std::vector<Data> dataB(NumDataElements);
 	for (int i = 0; i < NumDataElements; i++)
 	{
-		dataA[i].v1 = XMFLOAT3(i, i, i);
-		dataA[i].v2 = XMFLOAT2(i, 0);
+		dataA[i].v1 = XMFLOAT3(static_cast<float>(i), static_cast<float>(i), static_cast<float>(i));
+		dataA[i].v2 = XMFLOAT2(static_cast<float>(i), 0);
 
-		dataB[i].v1 = XMFLOAT3(-i, i, 0.0f);
-		dataB[i].v2 = XMFLOAT2(0, -i);
+		dataB[i].v1 = XMFLOAT3(static_cast<float>(-i), static_cast<float>(i), 0.0f);
+		dataB[i].v2 = XMFLOAT2(0, static_cast<float>(-i));
 	}
 
 	UINT64 byteSize = NumDataElements * sizeof(Data);

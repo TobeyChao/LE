@@ -40,7 +40,7 @@ struct PassConstants
 
 struct FrameResource
 {
-	FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount, UINT materialeCount);
+	FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount, UINT materialCount);
 	FrameResource(const FrameResource& rhs) = delete;
 	FrameResource& operator=(const FrameResource& rhs) = delete;
 	~FrameResource();
