@@ -12,6 +12,7 @@ cbuffer cbMaterial : register(b1)
     float3 gFresnelR0;
     float  gRoughness;
     float4x4 gMatTransform;
+    uint gDiffuseMapIndex;
 };
 
 cbuffer cbPass : register(b2)
@@ -39,6 +40,7 @@ cbuffer cbPass : register(b2)
     Light gLights[MaxLights];
 };
 
+Texture2D gDiffuseMap : register(t0);
 SamplerState gsamPointWrap  : register(s0);
 SamplerState gsamPointClamp  : register(s0);
 SamplerState gsamLinearWrap  : register(s0);

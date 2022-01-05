@@ -38,7 +38,7 @@ cbuffer cbPass : register(b2)
     Light gLights[MaxLights];
 };
 
-Texture2D gDiffuseMap : register(t0);
+Texture2D gDiffuseMap[4] : register(t0);
 SamplerState gsamPointWrap  : register(s0);
 SamplerState gsamPointClamp  : register(s0);
 SamplerState gsamLinearWrap  : register(s0);
@@ -87,7 +87,7 @@ float4 PS(VertexOut vertIn) : SV_Target
     // 光强
     float3 lightStrength = gLights[0].Strength.rgb * cosIncidentAngle;
     // 1.漫反射光
-    float4 diffuseAlbedo = gDiffuseMap.Sample(gsamLinearWrap, vertIn.TexC) * gDiffuseAlbedo;
+    float4 diffuseAlbedo = gDiffuseMap[0].Sample(gsamLinearWrap, vertIn.TexC) * gDiffuseAlbedo;
 	float3 diffuseColor = lightStrength * diffuseAlbedo.rgb;
     // 2.镜面光
 	// 2.1表面粗糙度

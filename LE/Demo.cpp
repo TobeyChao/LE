@@ -275,21 +275,21 @@ void Demo::Draw()
 	mCommandList->SetPipelineState(mPSOs["tess"].Get());
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Tessellation]);
 
-	// 渲染树
-	mCommandList->SetPipelineState(mPSOs["treeSprites"].Get());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::AlphaTestedTreeSprites]);
+	//// 渲染树
+	//mCommandList->SetPipelineState(mPSOs["treeSprites"].Get());
+	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::AlphaTestedTreeSprites]);
 
-	// 渲染镜子
-	mCommandList->OMSetStencilRef(1);
-	mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Mirrors]);
+	//// 渲染镜子
+	//mCommandList->OMSetStencilRef(1);
+	//mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
+	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Mirrors]);
 
-	// 渲染镜子里的东西
-	mCommandList->SetGraphicsRootConstantBufferView(3, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress() + 1 * passCBByteSize);
-	mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Reflected]);
-	mCommandList->SetGraphicsRootConstantBufferView(3, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
-	mCommandList->OMSetStencilRef(0);
+	//// 渲染镜子里的东西
+	//mCommandList->SetGraphicsRootConstantBufferView(3, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress() + 1 * passCBByteSize);
+	//mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
+	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Reflected]);
+	//mCommandList->SetGraphicsRootConstantBufferView(3, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
+	//mCommandList->OMSetStencilRef(0);
 
 	// 渲染透明物体
 	mCommandList->SetPipelineState(mPSOs["transparent"].Get());
@@ -477,7 +477,7 @@ void Demo::UpdateMaterialCB()
 		{
 			XMMATRIX matTransform = XMLoadFloat4x4(&mat->MatTransform);
 
-			MaterialConstants materialConstants;
+			MaterialData materialConstants;
 			materialConstants.DiffuseAlbedo = mat->DiffuseAlbedo;
 			materialConstants.FresnelR0 = mat->FresnelR0;
 			materialConstants.Roughness = mat->Roughness;
@@ -601,7 +601,7 @@ void Demo::BuildRootSignature()
 	// Default RootSignature
 	{
 		CD3DX12_DESCRIPTOR_RANGE texTable;
-		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0);
 
 		CD3DX12_ROOT_PARAMETER slotRootParameter[4];
 		slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
@@ -1317,7 +1317,7 @@ void Demo::BuildPSO()
 void Demo::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)
 {
 	UINT objCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(ObjectConstants));
-	UINT matCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(MaterialConstants));
+	UINT matCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(MaterialData));
 
 	auto objectCB = mCurrFrameResource->ObjectCB->Resource();
 	auto matCB = mCurrFrameResource->MaterialCB->Resource();

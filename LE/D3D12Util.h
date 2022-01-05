@@ -82,6 +82,19 @@ struct MaterialConstants
 	DirectX::XMFLOAT4X4 MatTransform;
 };
 
+// For Dynamic Index
+struct MaterialData
+{
+	DirectX::XMFLOAT4 DiffuseAlbedo = { 1.0f, 1.0f, 1.0f, 1.0f };
+	DirectX::XMFLOAT3 FresnelR0 = { 0.01f, 0.01f, 0.01f };
+	float Roughness = 0.25f;
+	DirectX::XMFLOAT4X4 MatTransform;
+	UINT DiffuseMapIndex = 0;
+	UINT MaterialPad0 = 0;
+	UINT MaterialPad1 = 0;
+	UINT MaterialPad2 = 0;
+};
+
 struct Light
 {
 	DirectX::XMFLOAT3 Strength = { 0.5f, 0.5f, 0.5f };
