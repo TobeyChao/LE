@@ -255,6 +255,9 @@ void Demo::Draw()
 		mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
 	}
 
+	// You can only bind descriptor heaps of type D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV and D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER.
+	// Only one descriptor heap of each type can be set at one time, which means a maximum of 2 heaps(one sampler, one CBV / SRV / UAV) can be set at one time.
+	// https://docs.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12graphicscommandlist-setdescriptorheaps
 	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
@@ -262,38 +265,40 @@ void Demo::Draw()
 
 	UINT passCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(PassConstants));
 
-	//int passCbvIndex = mPassCbvOffset + mCurrFrameResourceIndex;
-	//auto passCbvHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
-	//passCbvHandle.Offset(passCbvIndex, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-	//mCommandList->SetGraphicsRootDescriptorTable(1, passCbvHandle);
+	CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
+	mCommandList->SetGraphicsRootDescriptorTable(0, tex);
+
+	auto matBuffer = mCurrFrameResource->MaterialCB->Resource();
+	mCommandList->SetGraphicsRootShaderResourceView(3, matBuffer->GetGPUVirtualAddress());
 
 	// 渲染不透明物体
-	mCommandList->SetGraphicsRootConstantBufferView(3, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque]);
-
-	// 渲染曲面细分
-	mCommandList->SetPipelineState(mPSOs["tess"].Get());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Tessellation]);
+	mCommandList->SetGraphicsRootConstantBufferView(2, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
+	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque]);
 
 	//// 渲染树
 	//mCommandList->SetPipelineState(mPSOs["treeSprites"].Get());
 	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::AlphaTestedTreeSprites]);
 
-	//// 渲染镜子
-	//mCommandList->OMSetStencilRef(1);
-	//mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
-	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Mirrors]);
+	// 渲染镜子
+	mCommandList->OMSetStencilRef(1);
+	mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
+	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Mirrors]);
 
-	//// 渲染镜子里的东西
-	//mCommandList->SetGraphicsRootConstantBufferView(3, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress() + 1 * passCBByteSize);
-	//mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
-	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Reflected]);
-	//mCommandList->SetGraphicsRootConstantBufferView(3, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
-	//mCommandList->OMSetStencilRef(0);
+	// 渲染镜子里的东西
+	mCommandList->SetGraphicsRootConstantBufferView(2, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress() + 1 * passCBByteSize);
+	mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
+	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Reflected]);
+	mCommandList->SetGraphicsRootConstantBufferView(2, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
+	mCommandList->OMSetStencilRef(0);
 
 	// 渲染透明物体
 	mCommandList->SetPipelineState(mPSOs["transparent"].Get());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Transparent]);
+	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Transparent]);
+
+	// 渲染曲面细分
+	mCommandList->SetPipelineState(mPSOs["tess"].Get());
+	mCommandList->SetGraphicsRootSignature(mTessellationRootSignature.Get());
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Tessellation]);
 
 	if (mEnableMSAA)
 	{
@@ -407,6 +412,7 @@ void Demo::UpdateObjectCBs()
 			XMMATRIX world = XMLoadFloat4x4(&e->World);
 
 			ObjectConstants objConstants;
+			objConstants.MaterialIndex = e->Mat->MatCBIndex;
 			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
 
 			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
@@ -481,6 +487,7 @@ void Demo::UpdateMaterialCB()
 			materialConstants.DiffuseAlbedo = mat->DiffuseAlbedo;
 			materialConstants.FresnelR0 = mat->FresnelR0;
 			materialConstants.Roughness = mat->Roughness;
+			materialConstants.DiffuseMapIndex = mat->DiffuseSrvHeapIndex;
 			XMStoreFloat4x4(&materialConstants.MatTransform, XMMatrixTranspose(matTransform));
 
 			materialCB->CopyData(mat->MatCBIndex, materialConstants);
@@ -601,13 +608,13 @@ void Demo::BuildRootSignature()
 	// Default RootSignature
 	{
 		CD3DX12_DESCRIPTOR_RANGE texTable;
-		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0);
+		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0);
 
 		CD3DX12_ROOT_PARAMETER slotRootParameter[4];
 		slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
 		slotRootParameter[1].InitAsConstantBufferView(0);
 		slotRootParameter[2].InitAsConstantBufferView(1);
-		slotRootParameter[3].InitAsConstantBufferView(2);
+		slotRootParameter[3].InitAsShaderResourceView(0, 1);
 		auto staticSamplers = GetStaticSamplers();
 
 		CD3DX12_ROOT_SIGNATURE_DESC rootSignDesc(4, slotRootParameter,
@@ -675,8 +682,8 @@ void Demo::BuildRootSignature()
 
 void Demo::BuildShadersAndInputLayout()
 {
-	mShaders["standardVS"] = D3D12Util::CompileShader(L"Shaders\\Color.hlsl", nullptr, "VS", "vs_5_0");
-	mShaders["opaquePS"] = D3D12Util::CompileShader(L"Shaders\\Color.hlsl", nullptr, "PS", "ps_5_0");
+	mShaders["standardVS"] = D3D12Util::CompileShader(L"Shaders\\Color.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["opaquePS"] = D3D12Util::CompileShader(L"Shaders\\Color.hlsl", nullptr, "PS", "ps_5_1");
 
 	const D3D_SHADER_MACRO alphaTestDefines[] =
 	{
@@ -1247,31 +1254,31 @@ void Demo::BuildPSO()
 	//
 	// PSO for tree sprites
 	//
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC treeSpritePsoDesc = opaquePsoDesc;
-	if (mEnableMSAA)
-	{
-		treeSpritePsoDesc.BlendState.AlphaToCoverageEnable = true;
-	}
-	treeSpritePsoDesc.VS =
-	{
-		reinterpret_cast<BYTE*>(mShaders["treeSpriteVS"]->GetBufferPointer()),
-		mShaders["treeSpriteVS"]->GetBufferSize()
-	};
-	treeSpritePsoDesc.GS =
-	{
-		reinterpret_cast<BYTE*>(mShaders["treeSpriteGS"]->GetBufferPointer()),
-		mShaders["treeSpriteGS"]->GetBufferSize()
-	};
-	treeSpritePsoDesc.PS =
-	{
-		reinterpret_cast<BYTE*>(mShaders["treeSpritePS"]->GetBufferPointer()),
-		mShaders["treeSpritePS"]->GetBufferSize()
-	};
-	treeSpritePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
-	treeSpritePsoDesc.InputLayout = { mTreeSpriteInputLayout.data(), (UINT)mTreeSpriteInputLayout.size() };
-	treeSpritePsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+	//D3D12_GRAPHICS_PIPELINE_STATE_DESC treeSpritePsoDesc = opaquePsoDesc;
+	//if (mEnableMSAA)
+	//{
+	//	treeSpritePsoDesc.BlendState.AlphaToCoverageEnable = true;
+	//}
+	//treeSpritePsoDesc.VS =
+	//{
+	//	reinterpret_cast<BYTE*>(mShaders["treeSpriteVS"]->GetBufferPointer()),
+	//	mShaders["treeSpriteVS"]->GetBufferSize()
+	//};
+	//treeSpritePsoDesc.GS =
+	//{
+	//	reinterpret_cast<BYTE*>(mShaders["treeSpriteGS"]->GetBufferPointer()),
+	//	mShaders["treeSpriteGS"]->GetBufferSize()
+	//};
+	//treeSpritePsoDesc.PS =
+	//{
+	//	reinterpret_cast<BYTE*>(mShaders["treeSpritePS"]->GetBufferPointer()),
+	//	mShaders["treeSpritePS"]->GetBufferSize()
+	//};
+	//treeSpritePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
+	//treeSpritePsoDesc.InputLayout = { mTreeSpriteInputLayout.data(), (UINT)mTreeSpriteInputLayout.size() };
+	//treeSpritePsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
 
-	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&treeSpritePsoDesc, IID_PPV_ARGS(&mPSOs["treeSprites"])));
+	//ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&treeSpritePsoDesc, IID_PPV_ARGS(&mPSOs["treeSprites"])));
 
 	//
 	// PSO for tessellation sprites
@@ -1339,6 +1346,29 @@ void Demo::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector
 
 		D3D12_GPU_VIRTUAL_ADDRESS matAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
 		cmdList->SetGraphicsRootConstantBufferView(2, matAddress);
+
+		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
+	}
+}
+
+void Demo::DrawRenderItemsNew(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)
+{
+	UINT objCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(ObjectConstants));
+	UINT matCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(MaterialData));
+
+	auto objectCB = mCurrFrameResource->ObjectCB->Resource();
+	auto matCB = mCurrFrameResource->MaterialCB->Resource();
+	// For each render item...
+	for (size_t i = 0; i < ritems.size(); ++i)
+	{
+		auto ri = ritems[i];
+
+		cmdList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
+		cmdList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
+		cmdList->IASetPrimitiveTopology(ri->PrimitiveType);
+
+		D3D12_GPU_VIRTUAL_ADDRESS objAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
+		cmdList->SetGraphicsRootConstantBufferView(1, objAddress);
 
 		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
 	}

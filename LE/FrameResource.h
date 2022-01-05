@@ -6,6 +6,10 @@
 struct ObjectConstants
 {
 	DirectX::XMFLOAT4X4 World;
+	UINT     MaterialIndex;
+	UINT     ObjPad0;
+	UINT     ObjPad1;
+	UINT     ObjPad2;
 };
 
 struct PassConstants
