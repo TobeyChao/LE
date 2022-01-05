@@ -263,7 +263,6 @@ void Demo::Draw()
 
 	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
 
-	UINT passCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(PassConstants));
 	mCommandList->SetGraphicsRootConstantBufferView(1, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
 
 	auto matBuffer = mCurrFrameResource->MaterialCB->Resource();
@@ -285,6 +284,7 @@ void Demo::Draw()
 	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Mirrors]);
 
 	// 渲染镜子里的东西
+	UINT passCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(PassConstants));
 	mCommandList->SetGraphicsRootConstantBufferView(1, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress() + 1 * passCBByteSize);
 	mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
 	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Reflected]);
@@ -295,10 +295,10 @@ void Demo::Draw()
 	mCommandList->SetPipelineState(mPSOs["transparent"].Get());
 	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Transparent]);
 
-	//// 渲染曲面细分
-	//mCommandList->SetPipelineState(mPSOs["tess"].Get());
-	//mCommandList->SetGraphicsRootSignature(mTessellationRootSignature.Get());
-	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Tessellation]);
+	// 渲染曲面细分
+	mCommandList->SetPipelineState(mPSOs["tess"].Get());
+	mCommandList->SetGraphicsRootSignature(mTessellationRootSignature.Get());
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Tessellation]);
 
 	if (mEnableMSAA)
 	{
@@ -1327,7 +1327,7 @@ void Demo::BuildPSO()
 void Demo::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)
 {
 	UINT objCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(ObjectConstants));
-	UINT matCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(MaterialData));
+	UINT matCBByteSize = sizeof(MaterialData)/*D3D12Util::CalcConstantBufferByteSize(sizeof(MaterialData))*/;
 
 	auto objectCB = mCurrFrameResource->ObjectCB->Resource();
 	auto matCB = mCurrFrameResource->MaterialCB->Resource();
@@ -1348,7 +1348,7 @@ void Demo::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector
 		cmdList->SetGraphicsRootConstantBufferView(1, objAddress);
 
 		D3D12_GPU_VIRTUAL_ADDRESS matAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
-		cmdList->SetGraphicsRootConstantBufferView(2, matAddress);
+		cmdList->SetGraphicsRootConstantBufferView(3, matAddress);
 
 		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
 	}
