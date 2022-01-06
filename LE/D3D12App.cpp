@@ -203,6 +203,7 @@ void D3D12App::OnResize()
 	ImGui_ImplDX12_InvalidateDeviceObjects();
 
 	ThrowIfFailed(mCommandList->Reset(mCommandAllocator.Get(), nullptr));
+
 	// Release the previous resources we will be recreating.
 	for (int i = 0; i < SwapChainBufferCount; ++i)
 		mSwapChainBuffer[i].Reset();
@@ -448,19 +449,6 @@ void D3D12App::CreateRenderResource()
 	);
 	depth_stencil_desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
-	//D3D12_RESOURCE_DESC depth_stencil_desc;
-	//depth_stencil_desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-	//depth_stencil_desc.MipLevels = 1;
-	//depth_stencil_desc.Format = mDepthStencilFormat;
-	//depth_stencil_desc.Width = mClientWidth;
-	//depth_stencil_desc.Height = mClientHeight;
-	//depth_stencil_desc.Alignment = 0;
-	//depth_stencil_desc.DepthOrArraySize = 1;
-	//depth_stencil_desc.SampleDesc.Count = mEnableMSAA ? 4 : 1;;
-	//depth_stencil_desc.SampleDesc.Quality = mEnableMSAA ? (mMSAAQualityLevels - 1) : 0;
-	//depth_stencil_desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-	//depth_stencil_desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
-
 	D3D12_CLEAR_VALUE depthClear;
 	depthClear.Format = mDepthStencilFormat;
 	depthClear.DepthStencil.Depth = 1.0f;
@@ -483,6 +471,10 @@ void D3D12App::CreateRenderResource()
 	//));
 
 #pragma region MSAA
+
+	mMSAARenderTarget.Reset();
+	mMSAADepthStencilBuffer.Reset();
+
 	CD3DX12_HEAP_PROPERTIES heapProperties(D3D12_HEAP_TYPE_DEFAULT);
 
 	D3D12_RESOURCE_DESC msaaRTDesc = CD3DX12_RESOURCE_DESC::Tex2D(

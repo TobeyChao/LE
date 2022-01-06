@@ -3,17 +3,13 @@
 cbuffer cbPerObject : register(b0)
 {
     float4x4 gWorld;
+    uint gMaterialIndex;
+    uint gObjPad0;
+    uint gObjPad1;
+    uint gObjPad2;
 }
 
-cbuffer cbMaterial : register(b1)
-{
-    float4 gDiffuseAlbedo;
-    float3 gFresnelR0;
-    float  gRoughness;
-    float4x4 gMatTransform;
-};
-
-cbuffer cbPass : register(b2)
+cbuffer cbPass : register(b1)
 {
     float4x4 gView;
     float4x4 gInvView;
@@ -37,6 +33,16 @@ cbuffer cbPass : register(b2)
     // are spot lights for a maximum of MaxLights per object.
     Light gLights[MaxLights];
 };
+
+//cbuffer cbMaterial : register(b2)
+//{
+//    float4 gDiffuseAlbedo;
+//    float3 gFresnelR0;
+//    float  gRoughness;
+//    float4x4 gMatTransform;
+//};
+
+StructuredBuffer<MaterialData> gMaterialData : register(t0, space1);
 
 Texture2DArray gTreeMapArray : register(t0);
 SamplerState gsamPointWrap  : register(s0);
@@ -123,8 +129,14 @@ void GS(point VertexOut gin[1], uint primID : SV_PRIMITIVEID, inout TriangleStre
 
 float4 PS(GeoOut vertIn) : SV_Target
 {
+    MaterialData matData = gMaterialData[0];
+    float4 diffuseAlbedoMat = matData.DiffuseAlbedo;
+    float3 fresnelR0 = matData.FresnelR0;
+    float roughness = matData.Roughness;
+    uint diffuseTexIndex = matData.DiffuseMapIndex;
+
 	float3 uvw = float3(vertIn.TexC, vertIn.PrimID % 3);
-    float4 diffuseAlbedo = gTreeMapArray.Sample(gsamAnisotropicWrap, uvw) * gDiffuseAlbedo;
+    float4 diffuseAlbedo = gTreeMapArray.Sample(gsamAnisotropicWrap, uvw) * diffuseAlbedoMat;
 #ifdef ALPHA_TEST
 	// Discard pixel if texture alpha < 0.1.  We do this test as soon 
 	// as possible in the shader so that we can potentially exit the
@@ -147,11 +159,11 @@ float4 PS(GeoOut vertIn) : SV_Target
     // 2.镜面光
     // 2.1表面粗糙度
     float3 halfDir =  normalize(viewDir + worldLightDir);
-    float m = (1.0f - gRoughness) * 256.0f;
+    float m = (1.0f - roughness) * 256.0f;
     float roughnessFactor = (m + 8.0f) * pow(max(dot(halfDir, worldNormal), 0.0f), m) / 8.0f;
     // 2.2菲涅尔系数
     float f0 = 1.0f - cosIncidentAngle;
-    float3 fresnelFactor = gFresnelR0 + (1.0f - gFresnelR0)*(f0*f0*f0*f0*f0);
+    float3 fresnelFactor = fresnelR0 + (1.0f - fresnelR0)*(f0*f0*f0*f0*f0);
     // 最终镜面光颜色
     float3 specularColor = lightStrength * fresnelFactor * roughnessFactor;
     // 3.环境光

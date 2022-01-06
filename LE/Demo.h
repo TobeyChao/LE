@@ -171,4 +171,5 @@ private:
 	ComPtr<ID3D12Resource> mComputeReadBackBuffer = nullptr;
 
 	ComPtr<ID3D12RootSignature> mTessellationRootSignature = nullptr;
+	ComPtr<ID3D12RootSignature> mBillboardRootSignature = nullptr;
 };

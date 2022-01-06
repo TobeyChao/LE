@@ -35,14 +35,16 @@ cbuffer cbPass : register(b1)
     Light gLights[MaxLights];
 };
 
-cbuffer cbMaterial : register(b2)
-{
-    float4 gDiffuseAlbedo;
-    float3 gFresnelR0;
-    float  gRoughness;
-    float4x4 gMatTransform;
-    uint gDiffuseMapIndex;
-};
+//cbuffer cbMaterial : register(b2)
+//{
+//    float4 gDiffuseAlbedo;
+//    float3 gFresnelR0;
+//    float  gRoughness;
+//    float4x4 gMatTransform;
+//    uint gDiffuseMapIndex;
+//};
+
+StructuredBuffer<MaterialData> gMaterialData : register(t0, space1);
 
 Texture2D gDiffuseMap : register(t0);
 SamplerState gsamPointWrap  : register(s0);

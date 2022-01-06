@@ -274,9 +274,15 @@ void Demo::Draw()
 	// äÖÈ¾²»Í¸Ã÷ÎïÌå
 	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque]);
 
-	//// äÖÈ¾Ê÷
-	//mCommandList->SetPipelineState(mPSOs["treeSprites"].Get());
-	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::AlphaTestedTreeSprites]);
+	// äÖÈ¾Ê÷
+	mCommandList->SetPipelineState(mPSOs["treeSprites"].Get());
+	mCommandList->SetGraphicsRootSignature(mBillboardRootSignature.Get());
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::AlphaTestedTreeSprites]);
+
+	// »Ö¸´¸ù²ÎÊý
+	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+	mCommandList->SetGraphicsRootShaderResourceView(2, matBuffer->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootDescriptorTable(3, tex);
 
 	// äÖÈ¾¾µ×Ó
 	mCommandList->OMSetStencilRef(1);
@@ -651,10 +657,10 @@ void Demo::BuildRootSignature()
 		CD3DX12_ROOT_PARAMETER slotRootParameter[4];
 
 		// Perfomance TIP: Order from most frequent to least frequent.
-		slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
-		slotRootParameter[1].InitAsConstantBufferView(0);
-		slotRootParameter[2].InitAsConstantBufferView(1);
-		slotRootParameter[3].InitAsConstantBufferView(2);
+		slotRootParameter[0].InitAsConstantBufferView(0);
+		slotRootParameter[1].InitAsConstantBufferView(1);
+		slotRootParameter[2].InitAsShaderResourceView(0, 1);
+		slotRootParameter[3].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
 
 		auto staticSamplers = GetStaticSamplers();
 
@@ -681,6 +687,46 @@ void Demo::BuildRootSignature()
 			serializedRootSig->GetBufferSize(),
 			IID_PPV_ARGS(mTessellationRootSignature.GetAddressOf())));
 	}
+
+	// Billboard RootSignature
+	{
+		CD3DX12_DESCRIPTOR_RANGE texTable;
+		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+
+		// Root parameter can be a table, root descriptor or root constants.
+		CD3DX12_ROOT_PARAMETER slotRootParameter[4];
+
+		// Perfomance TIP: Order from most frequent to least frequent.
+		slotRootParameter[0].InitAsConstantBufferView(0);
+		slotRootParameter[1].InitAsConstantBufferView(1);
+		slotRootParameter[2].InitAsShaderResourceView(0, 1);
+		slotRootParameter[3].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
+
+		auto staticSamplers = GetStaticSamplers();
+
+		// A root signature is an array of root parameters.
+		CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(4, slotRootParameter,
+			(UINT)staticSamplers.size(), staticSamplers.data(),
+			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+		// create a root signature with a single slot which points to a descriptor range consisting of a single constant buffer
+		ComPtr<ID3DBlob> serializedRootSig = nullptr;
+		ComPtr<ID3DBlob> errorBlob = nullptr;
+		HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+			serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
+
+		if (errorBlob != nullptr)
+		{
+			::OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+		}
+		ThrowIfFailed(hr);
+
+		ThrowIfFailed(mD3D12Device->CreateRootSignature(
+			0,
+			serializedRootSig->GetBufferPointer(),
+			serializedRootSig->GetBufferSize(),
+			IID_PPV_ARGS(mBillboardRootSignature.GetAddressOf())));
+	}
 }
 
 void Demo::BuildShadersAndInputLayout()
@@ -694,19 +740,19 @@ void Demo::BuildShadersAndInputLayout()
 		NULL, NULL
 	};
 
-	mShaders["treeSpriteVS"] = D3D12Util::CompileShader(L"Shaders\\TreeSprite.hlsl", nullptr, "VS", "vs_5_0");
-	mShaders["treeSpriteGS"] = D3D12Util::CompileShader(L"Shaders\\TreeSprite.hlsl", nullptr, "GS", "gs_5_0");
-	mShaders["treeSpritePS"] = D3D12Util::CompileShader(L"Shaders\\TreeSprite.hlsl", alphaTestDefines, "PS", "ps_5_0");
+	mShaders["treeSpriteVS"] = D3D12Util::CompileShader(L"Shaders\\TreeSprite.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["treeSpriteGS"] = D3D12Util::CompileShader(L"Shaders\\TreeSprite.hlsl", nullptr, "GS", "gs_5_1");
+	mShaders["treeSpritePS"] = D3D12Util::CompileShader(L"Shaders\\TreeSprite.hlsl", alphaTestDefines, "PS", "ps_5_1");
 
-	//mShaders["tessVS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "VS", "vs_5_0");
-	//mShaders["tessHS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "HS", "hs_5_0");
-	//mShaders["tessDS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "DS", "ds_5_0");
-	//mShaders["tessPS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "PS", "ps_5_0");
+	//mShaders["tessVS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "VS", "vs_5_1");
+	//mShaders["tessHS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "HS", "hs_5_1");
+	//mShaders["tessDS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "DS", "ds_5_1");
+	//mShaders["tessPS"] = D3D12Util::CompileShader(L"Shaders\\Tessellation.hlsl", nullptr, "PS", "ps_5_1");
 
-	mShaders["tessVS"] = D3D12Util::CompileShader(L"Shaders\\BezierTessellation.hlsl", nullptr, "VS", "vs_5_0");
-	mShaders["tessHS"] = D3D12Util::CompileShader(L"Shaders\\BezierTessellation.hlsl", nullptr, "HS", "hs_5_0");
-	mShaders["tessDS"] = D3D12Util::CompileShader(L"Shaders\\BezierTessellation.hlsl", nullptr, "DS", "ds_5_0");
-	mShaders["tessPS"] = D3D12Util::CompileShader(L"Shaders\\BezierTessellation.hlsl", nullptr, "PS", "ps_5_0");
+	mShaders["tessVS"] = D3D12Util::CompileShader(L"Shaders\\BezierTessellation.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["tessHS"] = D3D12Util::CompileShader(L"Shaders\\BezierTessellation.hlsl", nullptr, "HS", "hs_5_1");
+	mShaders["tessDS"] = D3D12Util::CompileShader(L"Shaders\\BezierTessellation.hlsl", nullptr, "DS", "ds_5_1");
+	mShaders["tessPS"] = D3D12Util::CompileShader(L"Shaders\\BezierTessellation.hlsl", nullptr, "PS", "ps_5_1");
 
 	mDefaultInputLayout.clear();
 	mDefaultInputLayout.insert(mDefaultInputLayout.end(), std::begin(InputLayouts::inputLayoutPosTexNorCol), std::end(InputLayouts::inputLayoutPosTexNorCol));
@@ -1257,31 +1303,32 @@ void Demo::BuildPSO()
 	//
 	// PSO for tree sprites
 	//
-	//D3D12_GRAPHICS_PIPELINE_STATE_DESC treeSpritePsoDesc = opaquePsoDesc;
-	//if (mEnableMSAA)
-	//{
-	//	treeSpritePsoDesc.BlendState.AlphaToCoverageEnable = true;
-	//}
-	//treeSpritePsoDesc.VS =
-	//{
-	//	reinterpret_cast<BYTE*>(mShaders["treeSpriteVS"]->GetBufferPointer()),
-	//	mShaders["treeSpriteVS"]->GetBufferSize()
-	//};
-	//treeSpritePsoDesc.GS =
-	//{
-	//	reinterpret_cast<BYTE*>(mShaders["treeSpriteGS"]->GetBufferPointer()),
-	//	mShaders["treeSpriteGS"]->GetBufferSize()
-	//};
-	//treeSpritePsoDesc.PS =
-	//{
-	//	reinterpret_cast<BYTE*>(mShaders["treeSpritePS"]->GetBufferPointer()),
-	//	mShaders["treeSpritePS"]->GetBufferSize()
-	//};
-	//treeSpritePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
-	//treeSpritePsoDesc.InputLayout = { mTreeSpriteInputLayout.data(), (UINT)mTreeSpriteInputLayout.size() };
-	//treeSpritePsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC treeSpritePsoDesc = opaquePsoDesc;
+	treeSpritePsoDesc.pRootSignature = mBillboardRootSignature.Get();
+	if (mEnableMSAA)
+	{
+		treeSpritePsoDesc.BlendState.AlphaToCoverageEnable = true;
+	}
+	treeSpritePsoDesc.VS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["treeSpriteVS"]->GetBufferPointer()),
+		mShaders["treeSpriteVS"]->GetBufferSize()
+	};
+	treeSpritePsoDesc.GS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["treeSpriteGS"]->GetBufferPointer()),
+		mShaders["treeSpriteGS"]->GetBufferSize()
+	};
+	treeSpritePsoDesc.PS =
+	{
+		reinterpret_cast<BYTE*>(mShaders["treeSpritePS"]->GetBufferPointer()),
+		mShaders["treeSpritePS"]->GetBufferSize()
+	};
+	treeSpritePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
+	treeSpritePsoDesc.InputLayout = { mTreeSpriteInputLayout.data(), (UINT)mTreeSpriteInputLayout.size() };
+	treeSpritePsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
 
-	//ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&treeSpritePsoDesc, IID_PPV_ARGS(&mPSOs["treeSprites"])));
+	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&treeSpritePsoDesc, IID_PPV_ARGS(&mPSOs["treeSprites"])));
 
 	//
 	// PSO for tessellation sprites
@@ -1342,13 +1389,13 @@ void Demo::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector
 
 		CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
 		tex.Offset(ri->Mat->DiffuseSrvHeapIndex, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-		cmdList->SetGraphicsRootDescriptorTable(0, tex);
+		cmdList->SetGraphicsRootDescriptorTable(3, tex);
 
 		D3D12_GPU_VIRTUAL_ADDRESS objAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
-		cmdList->SetGraphicsRootConstantBufferView(1, objAddress);
+		cmdList->SetGraphicsRootConstantBufferView(0, objAddress);
 
 		D3D12_GPU_VIRTUAL_ADDRESS matAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
-		cmdList->SetGraphicsRootConstantBufferView(3, matAddress);
+		cmdList->SetGraphicsRootShaderResourceView(2, matAddress);
 
 		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
 	}
