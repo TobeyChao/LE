@@ -62,6 +62,10 @@ public:
 
 struct Material
 {
+	Material()
+	{
+		XMStoreFloat4x4(&MatTransform, DirectX::XMMatrixIdentity());
+	}
 	std::string Name;
 	// 材质在静态缓冲区里的索引
 	int MatCBIndex = -1;

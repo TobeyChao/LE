@@ -566,10 +566,17 @@ void Demo::LoadTextures()
 	D3D12Util::LoadTexture(mD3D12Device.Get(), mCommandList.Get(), treeArrayTex->Filename.c_str(),
 		treeArrayTex->Resource.GetAddressOf(), treeArrayTex->UploadHeap.GetAddressOf());
 
+	auto baseColorTex = std::make_unique<Texture>();
+	baseColorTex->Name = "baseColor";
+	baseColorTex->Filename = L"fbx/textures/BaseColor.png";
+	D3D12Util::LoadTexture(mD3D12Device.Get(), mCommandList.Get(), baseColorTex->Filename.c_str(),
+		baseColorTex->Resource.GetAddressOf(), baseColorTex->UploadHeap.GetAddressOf());
+
 	mTextures[gridTex->Name] = std::move(gridTex);
 	mTextures[woodTex->Name] = std::move(woodTex);
 	mTextures[iceTex->Name] = std::move(iceTex);
 	mTextures[treeArrayTex->Name] = std::move(treeArrayTex);
+	mTextures[baseColorTex->Name] = std::move(baseColorTex);
 }
 
 void Demo::BuildMaterials()
@@ -590,7 +597,6 @@ void Demo::BuildMaterials()
 	wood->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 	wood->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
 	wood->Roughness = 0.8f;
-	XMStoreFloat4x4(&wood->MatTransform, XMMatrixScaling(1.0f, 1.0f, 1.0f));
 
 	auto icemirror = std::make_unique<Material>();
 	icemirror->Name = "icemirror";
@@ -599,7 +605,6 @@ void Demo::BuildMaterials()
 	icemirror->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 0.5f);
 	icemirror->FresnelR0 = XMFLOAT3(0.1f, 0.1f, 0.1f);
 	icemirror->Roughness = 0.5f;
-	XMStoreFloat4x4(&icemirror->MatTransform, XMMatrixScaling(1.0f, 1.0f, 1.0f));
 
 	auto treeSprites = std::make_unique<Material>();
 	treeSprites->Name = "treeSprites";
@@ -609,10 +614,19 @@ void Demo::BuildMaterials()
 	treeSprites->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
 	treeSprites->Roughness = 0.125f;
 
+	auto baseColorMat = std::make_unique<Material>();
+	baseColorMat->Name = "baseColor";
+	baseColorMat->MatCBIndex = 4;
+	baseColorMat->DiffuseSrvHeapIndex = 4;
+	baseColorMat->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	baseColorMat->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
+	baseColorMat->Roughness = 0.125f;
+
 	mMaterials["floor"] = std::move(floor);
 	mMaterials["wood"] = std::move(wood);
 	mMaterials["icemirror"] = std::move(icemirror);
 	mMaterials["treeSprites"] = std::move(treeSprites);
+	mMaterials["baseColorMat"] = std::move(baseColorMat);
 }
 
 void Demo::BuildRootSignature()
@@ -620,7 +634,7 @@ void Demo::BuildRootSignature()
 	// Default RootSignature
 	{
 		CD3DX12_DESCRIPTOR_RANGE texTable;
-		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0, 0);
+		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0, 0);
 
 		CD3DX12_ROOT_PARAMETER slotRootParameter[4];
 
@@ -1014,6 +1028,93 @@ void Demo::BuildGeometry()
 
 		mGeometries["treeSpritesGeo"] = std::move(geo);
 	}
+	// FBX
+	{
+		Assimp::Importer loader;
+		aiMaterial* material = nullptr;
+		aiString path;
+
+		const aiScene* scene = loader.ReadFile("fbx/delicious-donut-with-sprinkles-gameready-model.quads.fbx",
+			aiProcess_Triangulate | aiProcess_CalcTangentSpace | aiProcess_JoinIdenticalVertices | aiProcess_ConvertToLeftHanded);
+
+		for (unsigned i = 0; i < scene->mNumMeshes; i++)
+		{
+			aiMesh* aimesh = scene->mMeshes[i];
+
+			material = scene->mMaterials[aimesh->mMaterialIndex];
+
+			material->GetTexture(aiTextureType::aiTextureType_DIFFUSE, 0, &path);
+
+			std::vector<PrimitiveTypes::PosTexNorColVertex> vertices(aimesh->mNumVertices);
+
+			for (size_t i = 0; i < aimesh->mNumVertices; ++i)
+			{
+				auto& p = aimesh->mVertices[i];
+				int uvChannelNum = aimesh->GetNumUVChannels();
+				if (uvChannelNum >= 1)
+				{
+					auto& texC = aimesh->mTextureCoords[0][i];
+					vertices[i].TexCoord = XMFLOAT2{ texC.x, texC.y };
+				}
+				int colorChannelNum = aimesh->GetNumColorChannels();
+				if (colorChannelNum >= 1)
+				{
+					auto& color = aimesh->mColors[0][i];
+					vertices[i].Color = { color.r, color.g, color.b, color.a };
+				}
+				else
+				{
+					vertices[i].Color = XMFLOAT4(DirectX::Colors::White);
+				}
+				auto& normal = aimesh->mNormals[i];
+				vertices[i].Position = { p.x, p.y, p.z };
+				vertices[i].Normal = { normal.x, normal.y, normal.z };
+			}
+			std::vector<std::uint16_t> indices;
+			for (unsigned k = 0; k < aimesh->mNumFaces; k++)
+			{
+				const struct aiFace* face = &aimesh->mFaces[k];
+				for (unsigned m = 0; m < face->mNumIndices; m++)
+				{
+					int index = face->mIndices[m];
+					indices.push_back(index);
+				}
+			}
+
+			const UINT vbByteSize = (UINT)vertices.size() * sizeof(PrimitiveTypes::PosTexNorColVertex);
+			const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
+
+			auto geo = std::make_unique<MeshGeometry>();
+			geo->Name = "fbx";
+
+			ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+			CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+
+			ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+			CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+
+			geo->VertexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
+				mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
+
+			geo->IndexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
+				mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+
+			geo->VertexByteStride = sizeof(PrimitiveTypes::PosTexNorColVertex);
+			geo->VertexBufferByteSize = vbByteSize;
+			geo->IndexFormat = DXGI_FORMAT_R16_UINT;
+			geo->IndexBufferByteSize = ibByteSize;
+
+			SubmeshGeometry submesh;
+			submesh.IndexCount = (UINT)indices.size();
+			submesh.StartIndexLocation = 0;
+			submesh.BaseVertexLocation = 0;
+
+			geo->DrawArgs["fbx"] = submesh;
+			mGeometries[geo->Name] = std::move(geo);
+		}
+
+		loader.FreeScene();
+	}
 }
 
 void Demo::BuildLandGeometry()
@@ -1100,7 +1201,7 @@ void Demo::BuildDescriptorHeaps()
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	srvHeapDesc.NodeMask = 0;
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	srvHeapDesc.NumDescriptors = 4;
+	srvHeapDesc.NumDescriptors = 5;
 	ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(mSrvDescriptorHeap.GetAddressOf())));
 }
 
@@ -1115,6 +1216,7 @@ void Demo::BuildShaderResourceViews()
 	auto woodCrateTex = mTextures["WoodCrate01"]->Resource;
 	auto iceTex = mTextures["ice"]->Resource;
 	auto treeTex = mTextures["treeArrayTex"]->Resource;
+	auto baseColorTex = mTextures["baseColor"]->Resource;
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -1143,6 +1245,16 @@ void Demo::BuildShaderResourceViews()
 	srvDesc.Texture2DArray.FirstArraySlice = 0;
 	srvDesc.Texture2DArray.ArraySize = treeTex->GetDesc().DepthOrArraySize;
 	mD3D12Device->CreateShaderResourceView(treeTex.Get(), &srvDesc, hDescriptor);
+
+	hDescriptor.Offset(1, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+	srvDesc = {};
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Format = baseColorTex->GetDesc().Format;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MostDetailedMip = 0;
+	srvDesc.Texture2D.MipLevels = baseColorTex->GetDesc().MipLevels;
+	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+	mD3D12Device->CreateShaderResourceView(baseColorTex.Get(), &srvDesc, hDescriptor);
 }
 
 void Demo::BuildRenderItems()
@@ -1218,12 +1330,25 @@ void Demo::BuildRenderItems()
 	quadPatchRitem->BaseVertexLocation = quadPatchRitem->Geo->DrawArgs["quadpatch"].BaseVertexLocation;
 	mRitemLayer[(int)RenderLayer::Tessellation].push_back(quadPatchRitem.get());
 
+	auto fbxRitem = std::make_unique<RenderItem>();
+	fbxRitem->World = MathHelper::Identity4x4();
+	XMStoreFloat4x4(&fbxRitem->World, XMMatrixScaling(0.1f, 0.1f, 0.1f) * XMMatrixTranslation(0, 5, 0));
+	fbxRitem->ObjCBIndex = 6;
+	fbxRitem->Mat = mMaterials["baseColorMat"].get();
+	fbxRitem->Geo = mGeometries["fbx"].get();
+	fbxRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	fbxRitem->IndexCount = fbxRitem->Geo->DrawArgs["fbx"].IndexCount;
+	fbxRitem->StartIndexLocation = fbxRitem->Geo->DrawArgs["fbx"].StartIndexLocation;
+	fbxRitem->BaseVertexLocation = fbxRitem->Geo->DrawArgs["fbx"].BaseVertexLocation;
+	mRitemLayer[(int)RenderLayer::Opaque].push_back(fbxRitem.get());
+
 	mAllRitems.push_back(std::move(gridRitem));
 	mAllRitems.push_back(std::move(boxRitem));
 	mAllRitems.push_back(std::move(reflectedBoxRitem));
 	mAllRitems.push_back(std::move(mirrorItem));
 	mAllRitems.push_back(std::move(treeSpritesRitem));
 	mAllRitems.push_back(std::move(quadPatchRitem));
+	mAllRitems.push_back(std::move(fbxRitem));
 }
 
 void Demo::BuildPSO()
@@ -1275,7 +1400,7 @@ void Demo::BuildPSO()
 		transparentPsoDesc.BlendState.RenderTarget[0] = transparencyBlendDesc;
 		ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&transparentPsoDesc, IID_PPV_ARGS(&mPSOs["transparent"])));
 	}
-	
+
 	//
 	// PSO for opaque wireframe objects.
 	//
@@ -1314,7 +1439,7 @@ void Demo::BuildPSO()
 		markMirrorPsoDesc.DepthStencilState = mirrorDSS;
 		ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&markMirrorPsoDesc, IID_PPV_ARGS(&mPSOs["markStencilMirrors"])));
 	}
-	
+
 	//
 	// PSO for draw relect objects.
 	//
@@ -1342,7 +1467,7 @@ void Demo::BuildPSO()
 		drawStencilReflectionsPsoDesc.RasterizerState.FrontCounterClockwise = true;
 		ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&drawStencilReflectionsPsoDesc, IID_PPV_ARGS(&mPSOs["drawStencilReflections"])));
 	}
-	
+
 	//
 	// PSO for tree sprites
 	//
@@ -1374,7 +1499,7 @@ void Demo::BuildPSO()
 
 		ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&treeSpritePsoDesc, IID_PPV_ARGS(&mPSOs["treeSprites"])));
 	}
-	
+
 	//
 	// PSO for tessellation sprites
 	//
