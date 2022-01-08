@@ -6,8 +6,6 @@
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx12.h"
 
-#include <iostream>
-
 DXGI_FORMAT NoSRGB(DXGI_FORMAT fmt)
 {
 	switch (fmt)
@@ -316,7 +314,6 @@ void D3D12App::LogAdapters()
 		text += desc.Description;
 		text += L"\n";
 		OutputDebugString(text.c_str());
-		std::wcout << text.c_str() << std::endl;
 		adapterList.push_back(adapter);
 		++i;
 	}
@@ -340,7 +337,6 @@ void D3D12App::LogAdapterOutputs(IDXGIAdapter* adapter)
 		text += desc.DeviceName;
 		text += L"\n";
 		OutputDebugString(text.c_str());
-		std::wcout << text.c_str() << std::endl;
 		LogOutputDisplayModes(output, DXGI_FORMAT_B8G8R8A8_UNORM);
 		ReleaseCom(output);
 		++i;
@@ -366,7 +362,6 @@ void D3D12App::LogOutputDisplayModes(IDXGIOutput* output, DXGI_FORMAT format)
 			L" refresh_rate = " + std::to_wstring(n) + L"/" + std::to_wstring(d) +
 			L"\n";
 		OutputDebugString(text.c_str());
-		std::wcout << text.c_str() << std::endl;
 	}
 }
 
@@ -417,8 +412,8 @@ void D3D12App::CreateDescriptorHeap()
 	mDsvHeap = std::make_unique<CDescriptorHeapWrapper>();
 	ThrowIfFailed(mDsvHeap->Create(mD3D12Device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1, false));
 
-	mSrvHeap = std::make_unique<CDescriptorHeapWrapper>();
-	ThrowIfFailed(mSrvHeap->Create(mD3D12Device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1, true));
+	mImguiSrvHeap = std::make_unique<CDescriptorHeapWrapper>();
+	ThrowIfFailed(mImguiSrvHeap->Create(mD3D12Device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1, true));
 
 
 	mMSAARtvHeap = std::make_unique<CDescriptorHeapWrapper>();

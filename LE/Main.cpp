@@ -1,8 +1,17 @@
 #include "Demo.h"
 
-// Main code
-int main(int, char**)
+int WINAPI WinMain(
+	HINSTANCE hInstance,
+	HINSTANCE prevInstance,
+	PSTR cmdLine,
+	int showCmd
+)
 {
+	// Enable run-time memory check for debug builds.
+#if defined(DEBUG) | defined(_DEBUG)
+	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+#endif
+
 	// Initialize Direct3D
 	try
 	{
@@ -14,7 +23,7 @@ int main(int, char**)
 		wc.lpfnWndProc = Demo::MainWndProc;
 		wc.cbClsExtra = 0;
 		wc.cbWndExtra = 0;
-		wc.hInstance = GetModuleHandle(NULL);
+		wc.hInstance = hInstance;
 		wc.hIcon = LoadIcon(0, IDI_APPLICATION);
 		wc.hCursor = LoadCursor(0, IDC_ARROW);
 		wc.hbrBackground = (HBRUSH)GetStockObject(NULL_BRUSH);

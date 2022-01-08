@@ -93,7 +93,7 @@ protected:
 	std::unique_ptr<CDescriptorHeapWrapper> mRtvHeap;
 	std::unique_ptr<CDescriptorHeapWrapper> mDsvHeap;
 	// ImGUI
-	std::unique_ptr<CDescriptorHeapWrapper> mSrvHeap;
+	std::unique_ptr<CDescriptorHeapWrapper> mImguiSrvHeap;
 	ComPtr<ID3D12Resource> mSwapChainBuffer[SwapChainBufferCount];
 	DXGI_FORMAT mDepthStencilFormat;
 	ComPtr<ID3D12Resource> mDepthStencilBuffer;

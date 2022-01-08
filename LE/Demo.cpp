@@ -61,9 +61,9 @@ void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 	// Setup Platform/Renderer bindings
 	ImGui_ImplWin32_Init(hwnd);
 	ImGui_ImplDX12_Init(mD3D12Device.Get(), gNumFrameResources,
-		DXGI_FORMAT_R8G8B8A8_UNORM, mSrvHeap->RawDH(),
-		mSrvHeap->hCPU(0),
-		mSrvHeap->hGPU(0));
+		DXGI_FORMAT_R8G8B8A8_UNORM, mImguiSrvHeap->RawDH(),
+		mImguiSrvHeap->hCPU(0),
+		mImguiSrvHeap->hGPU(0));
 
 	// Load Fonts
 	// - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
@@ -164,7 +164,7 @@ void Demo::Update()
 	UpdateMaterialCB();
 }
 
-void Demo::Draw()
+void Demo::PrepareUI()
 {
 	// Start the Dear ImGui frame
 	ImGui_ImplDX12_NewFrame();
@@ -208,6 +208,11 @@ void Demo::Draw()
 			show_another_window = false;
 		ImGui::End();
 	}
+}
+
+void Demo::Draw()
+{
+	PrepareUI();
 
 	auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;
 
@@ -261,22 +266,23 @@ void Demo::Draw()
 	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
-	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
-
-	mCommandList->SetGraphicsRootConstantBufferView(1, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
-
 	auto matBuffer = mCurrFrameResource->MaterialCB->Resource();
-	mCommandList->SetGraphicsRootShaderResourceView(2, matBuffer->GetGPUVirtualAddress());
-
 	CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
+
+	// 设置根参数
+	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+	mCommandList->SetGraphicsRootConstantBufferView(1, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootShaderResourceView(2, matBuffer->GetGPUVirtualAddress());
 	mCommandList->SetGraphicsRootDescriptorTable(3, tex);
 
 	// 渲染不透明物体
 	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque]);
 
-	// 渲染树
+	// 设置根参数
 	mCommandList->SetPipelineState(mPSOs["treeSprites"].Get());
 	mCommandList->SetGraphicsRootSignature(mBillboardRootSignature.Get());
+
+	// 渲染树
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::AlphaTestedTreeSprites]);
 
 	// 恢复根参数
@@ -341,7 +347,7 @@ void Demo::Draw()
 	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
 
 	// 渲染UI
-	ID3D12DescriptorHeap* descriptorHeapsSrv[] = { mSrvHeap->RawDH() };
+	ID3D12DescriptorHeap* descriptorHeapsSrv[] = { mImguiSrvHeap->RawDH() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeapsSrv), descriptorHeapsSrv);
 	ImGui::Render();
 	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
@@ -370,7 +376,7 @@ void Demo::Draw()
 
 void Demo::OnMouseMove(WPARAM btnState, int x, int y)
 {
-	if ((btnState & MK_RBUTTON) != 0)
+	if ((btnState & MK_LBUTTON) != 0)
 	{
 		// Make each pixel correspond to a quarter of a degree.
 		float dx = XMConvertToRadians(0.25f * static_cast<float>(x - mLastMousePos.x));
@@ -538,7 +544,7 @@ void Demo::LoadTextures()
 {
 	auto gridTex = std::make_unique<Texture>();
 	gridTex->Name = "tex_grid";
-	gridTex->Filename = L"Textures/tex_grid.png";
+	gridTex->Filename = L"Textures/floor.dds";
 	D3D12Util::LoadTexture(mD3D12Device.Get(), mCommandList.Get(), gridTex->Filename.c_str(),
 		gridTex->Resource.GetAddressOf(), gridTex->UploadHeap.GetAddressOf());
 
@@ -575,7 +581,7 @@ void Demo::BuildMaterials()
 	floor->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 0.8f);
 	floor->FresnelR0 = XMFLOAT3{ 0.01f, 0.01f, 0.01f };
 	floor->Roughness = 0.8f;
-	XMStoreFloat4x4(&(floor->MatTransform), XMMatrixScaling(2.0f, 2.0f, 1.f));
+	XMStoreFloat4x4(&(floor->MatTransform), XMMatrixScaling(4.0f, 4.0f, 1.f));
 
 	auto wood = std::make_unique<Material>();
 	wood->Name = "wood";
@@ -727,6 +733,36 @@ void Demo::BuildRootSignature()
 			serializedRootSig->GetBufferSize(),
 			IID_PPV_ARGS(mBillboardRootSignature.GetAddressOf())));
 	}
+
+	// Compute RootSignature
+	{
+		CD3DX12_ROOT_PARAMETER slotRootParameter[3];
+
+		slotRootParameter[0].InitAsShaderResourceView(0);
+		slotRootParameter[1].InitAsShaderResourceView(1);
+		slotRootParameter[2].InitAsUnorderedAccessView(0);
+
+		CD3DX12_ROOT_SIGNATURE_DESC rootSignDesc(3, slotRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+		// create a root signature with a single slot which points to a descriptor range consisting of a single constant buffer
+		ComPtr<ID3DBlob> serializedRootSig = nullptr;
+		ComPtr<ID3DBlob> errorBlob = nullptr;
+		HRESULT hr = D3D12SerializeRootSignature(&rootSignDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+			serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
+
+		if (errorBlob != nullptr)
+		{
+			::OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+		}
+
+		ThrowIfFailed(hr);
+
+		mD3D12Device->CreateRootSignature(
+			0,
+			serializedRootSig->GetBufferPointer(),
+			serializedRootSig->GetBufferSize(),
+			IID_PPV_ARGS(mComputeRootSignature.GetAddressOf()));
+	}
 }
 
 void Demo::BuildShadersAndInputLayout()
@@ -753,6 +789,8 @@ void Demo::BuildShadersAndInputLayout()
 	mShaders["tessHS"] = D3D12Util::CompileShader(L"Shaders\\BezierTessellation.hlsl", nullptr, "HS", "hs_5_1");
 	mShaders["tessDS"] = D3D12Util::CompileShader(L"Shaders\\BezierTessellation.hlsl", nullptr, "DS", "ds_5_1");
 	mShaders["tessPS"] = D3D12Util::CompileShader(L"Shaders\\BezierTessellation.hlsl", nullptr, "PS", "ps_5_1");
+
+	mShaders["vecAddCS"] = D3D12Util::CompileShader(L"Shaders\\VecAdd.hlsl", nullptr, "CS", "cs_5_0");
 
 	mDefaultInputLayout.clear();
 	mDefaultInputLayout.insert(mDefaultInputLayout.end(), std::begin(InputLayouts::inputLayoutPosTexNorCol), std::end(InputLayouts::inputLayoutPosTexNorCol));
@@ -1170,6 +1208,7 @@ void Demo::BuildRenderItems()
 
 	auto quadPatchRitem = std::make_unique<RenderItem>();
 	quadPatchRitem->World = MathHelper::Identity4x4();
+	XMStoreFloat4x4(&(quadPatchRitem->World), XMMatrixTranslation(0, 0, 40));
 	quadPatchRitem->ObjCBIndex = 5;
 	quadPatchRitem->Mat = mMaterials["floor"].get();
 	quadPatchRitem->Geo = mGeometries["quadpatchGeo"].get();
@@ -1218,157 +1257,179 @@ void Demo::BuildPSO()
 	//
 	// PSO for transparent objects
 	//
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC transparentPsoDesc = opaquePsoDesc;
 
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC transparentPsoDesc = opaquePsoDesc;
+		D3D12_RENDER_TARGET_BLEND_DESC transparencyBlendDesc;
+		transparencyBlendDesc.BlendEnable = true;
+		transparencyBlendDesc.LogicOpEnable = false;
+		transparencyBlendDesc.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		transparencyBlendDesc.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+		transparencyBlendDesc.BlendOp = D3D12_BLEND_OP_ADD;
+		transparencyBlendDesc.SrcBlendAlpha = D3D12_BLEND_ONE;
+		transparencyBlendDesc.DestBlendAlpha = D3D12_BLEND_ZERO;
+		transparencyBlendDesc.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+		transparencyBlendDesc.LogicOp = D3D12_LOGIC_OP_NOOP;
+		transparencyBlendDesc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
 
-	D3D12_RENDER_TARGET_BLEND_DESC transparencyBlendDesc;
-	transparencyBlendDesc.BlendEnable = true;
-	transparencyBlendDesc.LogicOpEnable = false;
-	transparencyBlendDesc.SrcBlend = D3D12_BLEND_SRC_ALPHA;
-	transparencyBlendDesc.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
-	transparencyBlendDesc.BlendOp = D3D12_BLEND_OP_ADD;
-	transparencyBlendDesc.SrcBlendAlpha = D3D12_BLEND_ONE;
-	transparencyBlendDesc.DestBlendAlpha = D3D12_BLEND_ZERO;
-	transparencyBlendDesc.BlendOpAlpha = D3D12_BLEND_OP_ADD;
-	transparencyBlendDesc.LogicOp = D3D12_LOGIC_OP_NOOP;
-	transparencyBlendDesc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-
-	transparentPsoDesc.BlendState.RenderTarget[0] = transparencyBlendDesc;
-	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&transparentPsoDesc, IID_PPV_ARGS(&mPSOs["transparent"])));
-
+		transparentPsoDesc.BlendState.RenderTarget[0] = transparencyBlendDesc;
+		ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&transparentPsoDesc, IID_PPV_ARGS(&mPSOs["transparent"])));
+	}
+	
 	//
 	// PSO for opaque wireframe objects.
 	//
-
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC opaqueWireframePsoDesc = opaquePsoDesc;
-	opaqueWireframePsoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
-	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&opaqueWireframePsoDesc, IID_PPV_ARGS(&mPSOs["opaque_wireframe"])));
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC opaqueWireframePsoDesc = opaquePsoDesc;
+		opaqueWireframePsoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
+		ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&opaqueWireframePsoDesc, IID_PPV_ARGS(&mPSOs["opaque_wireframe"])));
+	}
 
 	//
 	// PSO for mark stencil objects.
 	//
+	{
+		CD3DX12_BLEND_DESC mirrorBlendState(D3D12_DEFAULT);
+		mirrorBlendState.RenderTarget[0].RenderTargetWriteMask = 0;
 
-	CD3DX12_BLEND_DESC mirrorBlendState(D3D12_DEFAULT);
-	mirrorBlendState.RenderTarget[0].RenderTargetWriteMask = 0;
+		CD3DX12_DEPTH_STENCIL_DESC mirrorDSS;
+		mirrorDSS.DepthEnable = true;
+		mirrorDSS.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+		mirrorDSS.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+		mirrorDSS.StencilEnable = true;
+		mirrorDSS.StencilReadMask = 0xff;
+		mirrorDSS.StencilWriteMask = 0xff;
 
-	CD3DX12_DEPTH_STENCIL_DESC mirrorDSS;
-	mirrorDSS.DepthEnable = true;
-	mirrorDSS.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
-	mirrorDSS.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
-	mirrorDSS.StencilEnable = true;
-	mirrorDSS.StencilReadMask = 0xff;
-	mirrorDSS.StencilWriteMask = 0xff;
+		mirrorDSS.FrontFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+		mirrorDSS.FrontFace.StencilPassOp = D3D12_STENCIL_OP_REPLACE;
+		mirrorDSS.FrontFace.StencilFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+		mirrorDSS.FrontFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
+		mirrorDSS.BackFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+		mirrorDSS.BackFace.StencilPassOp = D3D12_STENCIL_OP_REPLACE;
+		mirrorDSS.BackFace.StencilFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+		mirrorDSS.BackFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
 
-	mirrorDSS.FrontFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
-	mirrorDSS.FrontFace.StencilPassOp = D3D12_STENCIL_OP_REPLACE;
-	mirrorDSS.FrontFace.StencilFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-	mirrorDSS.FrontFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
-	mirrorDSS.BackFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
-	mirrorDSS.BackFace.StencilPassOp = D3D12_STENCIL_OP_REPLACE;
-	mirrorDSS.BackFace.StencilFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-	mirrorDSS.BackFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
-
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC markMirrorPsoDesc = opaquePsoDesc;
-	markMirrorPsoDesc.BlendState = mirrorBlendState;
-	markMirrorPsoDesc.DepthStencilState = mirrorDSS;
-	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&markMirrorPsoDesc, IID_PPV_ARGS(&mPSOs["markStencilMirrors"])));
-
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC markMirrorPsoDesc = opaquePsoDesc;
+		markMirrorPsoDesc.BlendState = mirrorBlendState;
+		markMirrorPsoDesc.DepthStencilState = mirrorDSS;
+		ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&markMirrorPsoDesc, IID_PPV_ARGS(&mPSOs["markStencilMirrors"])));
+	}
+	
 	//
 	// PSO for draw relect objects.
 	//
+	{
+		CD3DX12_DEPTH_STENCIL_DESC reflectionDSS;
+		reflectionDSS.DepthEnable = true;
+		reflectionDSS.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+		reflectionDSS.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+		reflectionDSS.StencilEnable = true;
+		reflectionDSS.StencilReadMask = 0xff;
+		reflectionDSS.StencilWriteMask = 0xff;
 
-	CD3DX12_DEPTH_STENCIL_DESC reflectionDSS;
-	reflectionDSS.DepthEnable = true;
-	reflectionDSS.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
-	reflectionDSS.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
-	reflectionDSS.StencilEnable = true;
-	reflectionDSS.StencilReadMask = 0xff;
-	reflectionDSS.StencilWriteMask = 0xff;
+		reflectionDSS.FrontFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+		reflectionDSS.FrontFace.StencilPassOp = D3D12_STENCIL_OP_KEEP;
+		reflectionDSS.FrontFace.StencilFunc = D3D12_COMPARISON_FUNC_EQUAL;
+		reflectionDSS.FrontFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
+		reflectionDSS.BackFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+		reflectionDSS.BackFace.StencilPassOp = D3D12_STENCIL_OP_KEEP;
+		reflectionDSS.BackFace.StencilFunc = D3D12_COMPARISON_FUNC_EQUAL;
+		reflectionDSS.BackFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
 
-	reflectionDSS.FrontFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
-	reflectionDSS.FrontFace.StencilPassOp = D3D12_STENCIL_OP_KEEP;
-	reflectionDSS.FrontFace.StencilFunc = D3D12_COMPARISON_FUNC_EQUAL;
-	reflectionDSS.FrontFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
-	reflectionDSS.BackFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
-	reflectionDSS.BackFace.StencilPassOp = D3D12_STENCIL_OP_KEEP;
-	reflectionDSS.BackFace.StencilFunc = D3D12_COMPARISON_FUNC_EQUAL;
-	reflectionDSS.BackFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
-
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC drawStencilReflectionsPsoDesc = opaquePsoDesc;
-	drawStencilReflectionsPsoDesc.DepthStencilState = reflectionDSS;
-	drawStencilReflectionsPsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
-	drawStencilReflectionsPsoDesc.RasterizerState.FrontCounterClockwise = true;
-	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&drawStencilReflectionsPsoDesc, IID_PPV_ARGS(&mPSOs["drawStencilReflections"])));
-
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC drawStencilReflectionsPsoDesc = opaquePsoDesc;
+		drawStencilReflectionsPsoDesc.DepthStencilState = reflectionDSS;
+		drawStencilReflectionsPsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+		drawStencilReflectionsPsoDesc.RasterizerState.FrontCounterClockwise = true;
+		ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&drawStencilReflectionsPsoDesc, IID_PPV_ARGS(&mPSOs["drawStencilReflections"])));
+	}
+	
 	//
 	// PSO for tree sprites
 	//
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC treeSpritePsoDesc = opaquePsoDesc;
-	treeSpritePsoDesc.pRootSignature = mBillboardRootSignature.Get();
-	if (mEnableMSAA)
 	{
-		treeSpritePsoDesc.BlendState.AlphaToCoverageEnable = true;
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC treeSpritePsoDesc = opaquePsoDesc;
+		treeSpritePsoDesc.pRootSignature = mBillboardRootSignature.Get();
+		if (mEnableMSAA)
+		{
+			treeSpritePsoDesc.BlendState.AlphaToCoverageEnable = true;
+		}
+		treeSpritePsoDesc.VS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["treeSpriteVS"]->GetBufferPointer()),
+			mShaders["treeSpriteVS"]->GetBufferSize()
+		};
+		treeSpritePsoDesc.GS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["treeSpriteGS"]->GetBufferPointer()),
+			mShaders["treeSpriteGS"]->GetBufferSize()
+		};
+		treeSpritePsoDesc.PS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["treeSpritePS"]->GetBufferPointer()),
+			mShaders["treeSpritePS"]->GetBufferSize()
+		};
+		treeSpritePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
+		treeSpritePsoDesc.InputLayout = { mTreeSpriteInputLayout.data(), (UINT)mTreeSpriteInputLayout.size() };
+		treeSpritePsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+
+		ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&treeSpritePsoDesc, IID_PPV_ARGS(&mPSOs["treeSprites"])));
 	}
-	treeSpritePsoDesc.VS =
-	{
-		reinterpret_cast<BYTE*>(mShaders["treeSpriteVS"]->GetBufferPointer()),
-		mShaders["treeSpriteVS"]->GetBufferSize()
-	};
-	treeSpritePsoDesc.GS =
-	{
-		reinterpret_cast<BYTE*>(mShaders["treeSpriteGS"]->GetBufferPointer()),
-		mShaders["treeSpriteGS"]->GetBufferSize()
-	};
-	treeSpritePsoDesc.PS =
-	{
-		reinterpret_cast<BYTE*>(mShaders["treeSpritePS"]->GetBufferPointer()),
-		mShaders["treeSpritePS"]->GetBufferSize()
-	};
-	treeSpritePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
-	treeSpritePsoDesc.InputLayout = { mTreeSpriteInputLayout.data(), (UINT)mTreeSpriteInputLayout.size() };
-	treeSpritePsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
-
-	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&treeSpritePsoDesc, IID_PPV_ARGS(&mPSOs["treeSprites"])));
-
+	
 	//
 	// PSO for tessellation sprites
 	//
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC tessellationPsoDesc;
-	ZeroMemory(&tessellationPsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
-	tessellationPsoDesc.InputLayout = { mTessellationInputLayout.data(), (UINT)mTessellationInputLayout.size() };
-	tessellationPsoDesc.pRootSignature = mTessellationRootSignature.Get();
-	tessellationPsoDesc.VS =
 	{
-		reinterpret_cast<BYTE*>(mShaders["tessVS"]->GetBufferPointer()),
-		mShaders["tessVS"]->GetBufferSize()
-	};
-	tessellationPsoDesc.HS =
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC tessellationPsoDesc;
+		ZeroMemory(&tessellationPsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
+		tessellationPsoDesc.InputLayout = { mTessellationInputLayout.data(), (UINT)mTessellationInputLayout.size() };
+		tessellationPsoDesc.pRootSignature = mTessellationRootSignature.Get();
+		tessellationPsoDesc.VS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["tessVS"]->GetBufferPointer()),
+			mShaders["tessVS"]->GetBufferSize()
+		};
+		tessellationPsoDesc.HS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["tessHS"]->GetBufferPointer()),
+			mShaders["tessHS"]->GetBufferSize()
+		};
+		tessellationPsoDesc.DS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["tessDS"]->GetBufferPointer()),
+			mShaders["tessDS"]->GetBufferSize()
+		};
+		tessellationPsoDesc.PS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["tessPS"]->GetBufferPointer()),
+			mShaders["tessPS"]->GetBufferSize()
+		};
+		tessellationPsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		tessellationPsoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
+		tessellationPsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		tessellationPsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		tessellationPsoDesc.SampleMask = UINT_MAX;
+		tessellationPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
+		tessellationPsoDesc.NumRenderTargets = 1;
+		tessellationPsoDesc.RTVFormats[0] = mBackBufferFormat;
+		tessellationPsoDesc.SampleDesc.Count = mEnableMSAA ? mSampleCount : 1;
+		tessellationPsoDesc.SampleDesc.Quality = mEnableMSAA ? (mMSAAQualityLevels - 1) : 0;
+		tessellationPsoDesc.DSVFormat = mDepthStencilFormat;
+		ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&tessellationPsoDesc, IID_PPV_ARGS(&mPSOs["tess"])));
+	}
+	//
+	// PSO for compute shader
+	//
 	{
-		reinterpret_cast<BYTE*>(mShaders["tessHS"]->GetBufferPointer()),
-		mShaders["tessHS"]->GetBufferSize()
-	};
-	tessellationPsoDesc.DS =
-	{
-		reinterpret_cast<BYTE*>(mShaders["tessDS"]->GetBufferPointer()),
-		mShaders["tessDS"]->GetBufferSize()
-	};
-	tessellationPsoDesc.PS =
-	{
-		reinterpret_cast<BYTE*>(mShaders["tessPS"]->GetBufferPointer()),
-		mShaders["tessPS"]->GetBufferSize()
-	};
-	tessellationPsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-	tessellationPsoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
-	tessellationPsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-	tessellationPsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-	tessellationPsoDesc.SampleMask = UINT_MAX;
-	tessellationPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
-	tessellationPsoDesc.NumRenderTargets = 1;
-	tessellationPsoDesc.RTVFormats[0] = mBackBufferFormat;
-	tessellationPsoDesc.SampleDesc.Count = mEnableMSAA ? mSampleCount : 1;
-	tessellationPsoDesc.SampleDesc.Quality = mEnableMSAA ? (mMSAAQualityLevels - 1) : 0;
-	tessellationPsoDesc.DSVFormat = mDepthStencilFormat;
-	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&tessellationPsoDesc, IID_PPV_ARGS(&mPSOs["tess"])));
+		D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
+		computePsoDesc.pRootSignature = mComputeRootSignature.Get();
+		computePsoDesc.CS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["vecAddCS"]->GetBufferPointer()),
+			mShaders["vecAddCS"]->GetBufferSize()
+		};
+		computePsoDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
+		mD3D12Device->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&mPSOs["vecAdd"]));
+	}
 }
 
 void Demo::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)
@@ -1523,54 +1584,6 @@ void Demo::BuildComputeBuffers()
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		nullptr,
 		IID_PPV_ARGS(&mComputeReadBackBuffer));
-}
-
-void Demo::BuildComputeRootSignature()
-{
-	CD3DX12_ROOT_PARAMETER slotRootParameter[3];
-
-	slotRootParameter[0].InitAsShaderResourceView(0);
-	slotRootParameter[1].InitAsShaderResourceView(1);
-	slotRootParameter[2].InitAsUnorderedAccessView(0);
-
-	CD3DX12_ROOT_SIGNATURE_DESC rootSignDesc(3, slotRootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
-
-	// create a root signature with a single slot which points to a descriptor range consisting of a single constant buffer
-	ComPtr<ID3DBlob> serializedRootSig = nullptr;
-	ComPtr<ID3DBlob> errorBlob = nullptr;
-	HRESULT hr = D3D12SerializeRootSignature(&rootSignDesc, D3D_ROOT_SIGNATURE_VERSION_1,
-		serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
-
-	if (errorBlob != nullptr)
-	{
-		::OutputDebugStringA((char*)errorBlob->GetBufferPointer());
-	}
-
-	ThrowIfFailed(hr);
-
-	mD3D12Device->CreateRootSignature(
-		0,
-		serializedRootSig->GetBufferPointer(),
-		serializedRootSig->GetBufferSize(),
-		IID_PPV_ARGS(mComputeRootSignature.GetAddressOf()));
-}
-
-void Demo::BuildComputeShadersAndInputLayout()
-{
-	mShaders["vecAddCS"] = D3D12Util::CompileShader(L"Shaders\\VecAdd.hlsl", nullptr, "CS", "cs_5_0");
-}
-
-void Demo::BuildComputePSOs()
-{
-	D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
-	computePsoDesc.pRootSignature = mComputeRootSignature.Get();
-	computePsoDesc.CS =
-	{
-		reinterpret_cast<BYTE*>(mShaders["vecAddCS"]->GetBufferPointer()),
-		mShaders["vecAddCS"]->GetBufferSize()
-	};
-	computePsoDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
-	mD3D12Device->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&mPSOs["vecAdd"]));
 }
 
 void Demo::DoComputeWork()

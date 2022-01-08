@@ -1,52 +1,12 @@
 #include "LightingUtil.hlsl"
 #include "BezierUtil.hlsl"
 
-cbuffer cbPerObject : register(b0)
-{
-    float4x4 gWorld;
-    uint gMaterialIndex;
-    uint gObjPad0;
-    uint gObjPad1;
-    uint gObjPad2;
-}
+#include "Common.hlsl"
 
-cbuffer cbPass : register(b1)
-{
-    float4x4 gView;
-    float4x4 gInvView;
-    float4x4 gProj;
-    float4x4 gInvProj;
-    float4x4 gViewProj;
-    float4x4 gInvViewProj;
-    float3 gEyePosW;
-    float cbPerObjectPad1;
-    float2 gRenderTargetSize;
-    float2 gInvRenderTargetSize;
-    float gNearZ;
-    float gFarZ;
-    float gTotalTime;
-    float gDeltaTime;
-    float4 gAmbientLight;
-
-    // Indices [0, NUM_DIR_LIGHTS) are directional lights;
-    // indices [NUM_DIR_LIGHTS, NUM_DIR_LIGHTS+NUM_POINT_LIGHTS) are point lights;
-    // indices [NUM_DIR_LIGHTS+NUM_POINT_LIGHTS, NUM_DIR_LIGHTS+NUM_POINT_LIGHT+NUM_SPOT_LIGHTS)
-    // are spot lights for a maximum of MaxLights per object.
-    Light gLights[MaxLights];
-};
-
-//cbuffer cbMaterial : register(b2)
-//{
-//    float4 gDiffuseAlbedo;
-//    float3 gFresnelR0;
-//    float  gRoughness;
-//    float4x4 gMatTransform;
-//    uint gDiffuseMapIndex;
-//};
+Texture2D gDiffuseMap : register(t0);
 
 StructuredBuffer<MaterialData> gMaterialData : register(t0, space1);
 
-Texture2D gDiffuseMap : register(t0);
 SamplerState gsamPointWrap  : register(s0);
 SamplerState gsamPointClamp  : register(s0);
 SamplerState gsamLinearWrap  : register(s0);
@@ -161,7 +121,7 @@ const OutputPatch<HullOut, 16> bzPatch)
     float4 basisU = BernsteinBasis(uv.x);
     float4 basisV = BernsteinBasis(uv.y);
 
-    float3 p = CubicBezierSum(bzPatch, basisU, basisV) + float3(0.0f, 4.0f, 0.0f);
+    float3 p = CubicBezierSum(bzPatch, basisU, basisV);
 
     float4 posW = mul(float4(p, 1.0f), gWorld);
     dout.PosH = mul(posW, gViewProj);

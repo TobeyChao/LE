@@ -109,15 +109,16 @@ public:
 	};
 
 	void BuildComputeBuffers();
-	void BuildComputeRootSignature();
-	void BuildComputeShadersAndInputLayout();
-	void BuildComputePSOs();
 	void DoComputeWork();
 
 	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);
 	void DrawRenderItemsNew(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);
 
 	std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> GetStaticSamplers();
+
+private:
+	void PrepareUI();
+
 private:
 	std::vector<std::unique_ptr<FrameResource>> mFrameResources;
 	FrameResource* mCurrFrameResource = nullptr;
