@@ -35,7 +35,7 @@ VertexOut VS(VertexIn vertIn, uint instanceID : SV_INSTANCEID)
 {
     VertexOut vertOut;
 
-    InstanceData instData = gInstanceData[0];
+    InstanceData instData = gInstanceData[instanceID];
     float4x4 world = instData.World;
     float4x4 texTransform = instData.TexTransform;
     uint matIndex = instData.MaterialIndex;

@@ -278,39 +278,39 @@ void Demo::Draw()
 	// 渲染不透明物体
 	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque]);
 
-	//// 设置根参数
-	//mCommandList->SetPipelineState(mPSOs["treeSprites"].Get());
-	//mCommandList->SetGraphicsRootSignature(mBillboardRootSignature.Get());
+	// 设置根参数
+	mCommandList->SetPipelineState(mPSOs["treeSprites"].Get());
+	mCommandList->SetGraphicsRootSignature(mBillboardRootSignature.Get());
 
-	//// 渲染树
-	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::AlphaTestedTreeSprites]);
+	// 渲染树
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::AlphaTestedTreeSprites]);
 
-	//// 恢复根参数
-	//mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
-	//mCommandList->SetGraphicsRootShaderResourceView(2, matBuffer->GetGPUVirtualAddress());
-	//mCommandList->SetGraphicsRootDescriptorTable(3, tex);
+	// 恢复根参数
+	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+	mCommandList->SetGraphicsRootShaderResourceView(2, matBuffer->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootDescriptorTable(3, tex);
 
-	//// 渲染镜子
-	//mCommandList->OMSetStencilRef(1);
-	//mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
-	//DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Mirrors]);
+	// 渲染镜子
+	mCommandList->OMSetStencilRef(1);
+	mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
+	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Mirrors]);
 
-	//// 渲染镜子里的东西
-	//UINT passCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(PassConstants));
-	//mCommandList->SetGraphicsRootConstantBufferView(1, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress() + 1 * passCBByteSize);
-	//mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
-	//DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Reflected]);
-	//mCommandList->SetGraphicsRootConstantBufferView(1, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
-	//mCommandList->OMSetStencilRef(0);
+	// 渲染镜子里的东西
+	UINT passCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(PassConstants));
+	mCommandList->SetGraphicsRootConstantBufferView(1, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress() + 1 * passCBByteSize);
+	mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
+	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Reflected]);
+	mCommandList->SetGraphicsRootConstantBufferView(1, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
+	mCommandList->OMSetStencilRef(0);
 
-	//// 渲染透明物体
-	//mCommandList->SetPipelineState(mPSOs["transparent"].Get());
-	//DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Transparent]);
+	// 渲染透明物体
+	mCommandList->SetPipelineState(mPSOs["transparent"].Get());
+	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Transparent]);
 
-	//// 渲染曲面细分
-	//mCommandList->SetPipelineState(mPSOs["tess"].Get());
-	//mCommandList->SetGraphicsRootSignature(mTessellationRootSignature.Get());
-	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Tessellation]);
+	// 渲染曲面细分
+	mCommandList->SetPipelineState(mPSOs["tess"].Get());
+	mCommandList->SetGraphicsRootSignature(mTessellationRootSignature.Get());
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Tessellation]);
 
 	if (mEnableMSAA)
 	{
@@ -815,21 +815,21 @@ void Demo::BuildShadersAndInputLayout()
 
 	mDefaultInputLayout =
 	{
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 0 },
-		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 0 },
-		{ "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 20, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 0 },
-		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 0 }
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 20, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
 	};
 
 	mTreeSpriteInputLayout =
 	{
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 0 },
-		{ "SIZE", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 0 },
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "SIZE", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 	};
 
 	mTessellationInputLayout =
 	{
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 0 },
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 	};
 }
 
@@ -1375,7 +1375,9 @@ void Demo::BuildRenderItems()
 	fbxRitem->Instances.resize(5);
 	for (int i = 0; i < 5; i++)
 	{
-		XMStoreFloat4x4(&(fbxRitem->Instances[i].World), XMMatrixTranslation(0, 0, static_cast<float>(-5 + rand() % (10 + 1))));
+		XMStoreFloat4x4(&(fbxRitem->Instances[i].World),
+			XMMatrixScaling(0.1f, 0.1f, 0.1f) *
+			XMMatrixTranslation(static_cast<float>(-10 + rand() % (20 + 1)), 4, static_cast<float>(-10 + rand() % (20 + 1))));
 		fbxRitem->Instances[i].MaterialIndex = quadPatchRitem->Mat->MaterialIndex;
 	}
 	mRitemLayer[(int)RenderLayer::Opaque].push_back(fbxRitem.get());
