@@ -52,7 +52,6 @@
     <ClCompile Include="D3D12Util.cpp" />
     <ClCompile Include="DDSTextureLoader12.cpp" />
     <ClCompile Include="Demo.cpp" />
-    <ClCompile Include="FrameResource.cpp" />
     <ClCompile Include="GameTimer.cpp" />
     <ClCompile Include="GeometryGenerator.cpp" />
     <ClCompile Include="imgui.cpp" />

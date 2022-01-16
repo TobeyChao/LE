@@ -4,7 +4,8 @@
 
 Texture2D gDiffuseMap : register(t0);
 
-StructuredBuffer<MaterialData> gMaterialData : register(t0, space1);
+StructuredBuffer<InstanceData> gInstanceData : register(t0, space1);
+StructuredBuffer<MaterialData> gMaterialData : register(t1, space1);
 
 SamplerState gsamPointWrap  : register(s0);
 SamplerState gsamPointClamp  : register(s0);
@@ -21,12 +22,14 @@ struct VertexIn
 struct VertexOut
 {
     float3 PosL : POSITION;
+    nointerpolation uint InstanceID : INSTANCEID;
 };
 
-VertexOut VS(VertexIn vin)
+VertexOut VS(VertexIn vin, uint instanceID : SV_INSTANCEID)
 {
     VertexOut vertOut;
     vertOut.PosL = vin.PosL;
+    vertOut.InstanceID = instanceID;
     return vertOut;
 }
 
@@ -37,7 +40,7 @@ struct PatchTess
     // 内部镶嵌因子
     float InsideTess[2] : SV_INSIDETESSFACTOR;
     // Other Info
-
+    nointerpolation uint InstanceID : INSTANCEID;
 };
 
 // 常量外壳着色器
@@ -51,7 +54,10 @@ PatchTess ConstantHS(InputPatch<VertexOut, 4> patch, uint patchID : SV_PRIMITIVE
     patch[3].PosL
     );
 
-    float3 centerW = mul(float4(centerL, 1.0f), gWorld);
+    InstanceData instData = gInstanceData[patch[0].InstanceID];
+    float4x4 world = instData.World;
+
+    float3 centerW = mul(float4(centerL, 1.0f), world);
     float d = distance(centerW, gEyePosW);
 
     const float near = 10.0f;
@@ -67,13 +73,10 @@ PatchTess ConstantHS(InputPatch<VertexOut, 4> patch, uint patchID : SV_PRIMITIVE
     pt.InsideTess[0] = tess;
     pt.InsideTess[1] = tess;
 
+    pt.InstanceID = patch[0].InstanceID;
+
     return pt;
 }
-
-struct HullOut
-{
-    float3 PosL : POSITION;
-};
 
 // 面片的类型
 // 1.tri 三角形面片
@@ -127,7 +130,10 @@ const OutputPatch<HullOut, 4> quad)
 
     p.y = 0.3 * (p.z * sin(p.x) + p.x * cos(p.z)) + 5.0f;
 
-    float4 posW = mul(float4(p, 1.0f), gWorld);
+    InstanceData instData = gInstanceData[patchTess.InstanceID];
+    float4x4 world = instData.World;
+
+    float4 posW = mul(float4(p, 1.0f), world);
     dout.PosH = mul(posW, gViewProj);
 
     return dout;

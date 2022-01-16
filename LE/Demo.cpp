@@ -278,39 +278,39 @@ void Demo::Draw()
 	// 渲染不透明物体
 	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque]);
 
-	// 设置根参数
-	mCommandList->SetPipelineState(mPSOs["treeSprites"].Get());
-	mCommandList->SetGraphicsRootSignature(mBillboardRootSignature.Get());
+	//// 设置根参数
+	//mCommandList->SetPipelineState(mPSOs["treeSprites"].Get());
+	//mCommandList->SetGraphicsRootSignature(mBillboardRootSignature.Get());
 
-	// 渲染树
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::AlphaTestedTreeSprites]);
+	//// 渲染树
+	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::AlphaTestedTreeSprites]);
 
-	// 恢复根参数
-	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
-	mCommandList->SetGraphicsRootShaderResourceView(2, matBuffer->GetGPUVirtualAddress());
-	mCommandList->SetGraphicsRootDescriptorTable(3, tex);
+	//// 恢复根参数
+	//mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+	//mCommandList->SetGraphicsRootShaderResourceView(2, matBuffer->GetGPUVirtualAddress());
+	//mCommandList->SetGraphicsRootDescriptorTable(3, tex);
 
-	// 渲染镜子
-	mCommandList->OMSetStencilRef(1);
-	mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
-	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Mirrors]);
+	//// 渲染镜子
+	//mCommandList->OMSetStencilRef(1);
+	//mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
+	//DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Mirrors]);
 
-	// 渲染镜子里的东西
-	UINT passCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(PassConstants));
-	mCommandList->SetGraphicsRootConstantBufferView(1, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress() + 1 * passCBByteSize);
-	mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
-	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Reflected]);
-	mCommandList->SetGraphicsRootConstantBufferView(1, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
-	mCommandList->OMSetStencilRef(0);
+	//// 渲染镜子里的东西
+	//UINT passCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(PassConstants));
+	//mCommandList->SetGraphicsRootConstantBufferView(1, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress() + 1 * passCBByteSize);
+	//mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
+	//DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Reflected]);
+	//mCommandList->SetGraphicsRootConstantBufferView(1, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
+	//mCommandList->OMSetStencilRef(0);
 
-	// 渲染透明物体
-	mCommandList->SetPipelineState(mPSOs["transparent"].Get());
-	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Transparent]);
+	//// 渲染透明物体
+	//mCommandList->SetPipelineState(mPSOs["transparent"].Get());
+	//DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Transparent]);
 
-	// 渲染曲面细分
-	mCommandList->SetPipelineState(mPSOs["tess"].Get());
-	mCommandList->SetGraphicsRootSignature(mTessellationRootSignature.Get());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Tessellation]);
+	//// 渲染曲面细分
+	//mCommandList->SetPipelineState(mPSOs["tess"].Get());
+	//mCommandList->SetGraphicsRootSignature(mTessellationRootSignature.Get());
+	//DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Tessellation]);
 
 	if (mEnableMSAA)
 	{
@@ -411,23 +411,30 @@ void Demo::UpdateCamera()
 	mCameras["MainCamera"]->ComputeInfo();
 }
 
+void Demo::UpdateInstanceData()
+{
+}
+
 void Demo::UpdateObjectCBs()
 {
 	// Update the constant buffer with the latest worldViewProj matrix.
-	auto currObjectCB = mCurrFrameResource->ObjectCB.get();
 	for (auto& e : mAllRitems)
 	{
+		auto currObjectCB = mCurrFrameResource->InstanceBuffer[e.get()].get();
 		// Only update the cbuffer data if the constants have changed.  
 		// This needs to be tracked per frame resource.
 		if (e->NumFramesDirty > 0)
 		{
-			XMMATRIX world = XMLoadFloat4x4(&e->World);
+			for (UINT i = 0; i < e->InstanceCount; i++)
+			{
+				XMMATRIX world = XMLoadFloat4x4(&(e->Instances[i].World));
+				InstanceData instanceData;
+				instanceData.MaterialIndex = e->Mat->MaterialIndex;
+				XMStoreFloat4x4(&instanceData.TexTransform, XMMatrixIdentity());
+				XMStoreFloat4x4(&instanceData.World, XMMatrixTranspose(world));
 
-			ObjectConstants objConstants;
-			objConstants.MaterialIndex = e->Mat->MatCBIndex;
-			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
-
-			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
+				currObjectCB->CopyData(i, instanceData);
+			}
 
 			// Next FrameResource need to be updated too.
 			e->NumFramesDirty--;
@@ -502,7 +509,7 @@ void Demo::UpdateMaterialCB()
 			materialConstants.DiffuseMapIndex = mat->DiffuseSrvHeapIndex;
 			XMStoreFloat4x4(&materialConstants.MatTransform, XMMatrixTranspose(matTransform));
 
-			materialCB->CopyData(mat->MatCBIndex, materialConstants);
+			materialCB->CopyData(mat->MaterialIndex, materialConstants);
 
 			// Next FrameResource need to be updated too.
 			mat->NumFramesDirty--;
@@ -583,7 +590,7 @@ void Demo::BuildMaterials()
 {
 	auto floor = std::make_unique<Material>();
 	floor->Name = "floor";
-	floor->MatCBIndex = 0;
+	floor->MaterialIndex = 0;
 	floor->DiffuseSrvHeapIndex = 0;
 	floor->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 0.8f);
 	floor->FresnelR0 = XMFLOAT3{ 0.01f, 0.01f, 0.01f };
@@ -592,7 +599,7 @@ void Demo::BuildMaterials()
 
 	auto wood = std::make_unique<Material>();
 	wood->Name = "wood";
-	wood->MatCBIndex = 1;
+	wood->MaterialIndex = 1;
 	wood->DiffuseSrvHeapIndex = 1;
 	wood->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 	wood->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
@@ -600,7 +607,7 @@ void Demo::BuildMaterials()
 
 	auto icemirror = std::make_unique<Material>();
 	icemirror->Name = "icemirror";
-	icemirror->MatCBIndex = 2;
+	icemirror->MaterialIndex = 2;
 	icemirror->DiffuseSrvHeapIndex = 2;
 	icemirror->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 0.5f);
 	icemirror->FresnelR0 = XMFLOAT3(0.1f, 0.1f, 0.1f);
@@ -608,7 +615,7 @@ void Demo::BuildMaterials()
 
 	auto treeSprites = std::make_unique<Material>();
 	treeSprites->Name = "treeSprites";
-	treeSprites->MatCBIndex = 3;
+	treeSprites->MaterialIndex = 3;
 	treeSprites->DiffuseSrvHeapIndex = 3;
 	treeSprites->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 	treeSprites->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
@@ -616,7 +623,7 @@ void Demo::BuildMaterials()
 
 	auto baseColorMat = std::make_unique<Material>();
 	baseColorMat->Name = "baseColor";
-	baseColorMat->MatCBIndex = 4;
+	baseColorMat->MaterialIndex = 4;
 	baseColorMat->DiffuseSrvHeapIndex = 4;
 	baseColorMat->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 	baseColorMat->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
@@ -639,9 +646,9 @@ void Demo::BuildRootSignature()
 		CD3DX12_ROOT_PARAMETER slotRootParameter[4];
 
 		// Perfomance TIP: Order from most frequent to least frequent.
-		slotRootParameter[0].InitAsConstantBufferView(0);
-		slotRootParameter[1].InitAsConstantBufferView(1);
-		slotRootParameter[2].InitAsShaderResourceView(0, 1);
+		slotRootParameter[0].InitAsShaderResourceView(0, 1);
+		slotRootParameter[1].InitAsConstantBufferView(0);
+		slotRootParameter[2].InitAsShaderResourceView(1, 1);
 		slotRootParameter[3].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
 
 		auto staticSamplers = GetStaticSamplers();
@@ -677,9 +684,9 @@ void Demo::BuildRootSignature()
 		CD3DX12_ROOT_PARAMETER slotRootParameter[4];
 
 		// Perfomance TIP: Order from most frequent to least frequent.
-		slotRootParameter[0].InitAsConstantBufferView(0);
-		slotRootParameter[1].InitAsConstantBufferView(1);
-		slotRootParameter[2].InitAsShaderResourceView(0, 1);
+		slotRootParameter[0].InitAsShaderResourceView(0, 1);
+		slotRootParameter[1].InitAsConstantBufferView(0);
+		slotRootParameter[2].InitAsShaderResourceView(1, 1);
 		slotRootParameter[3].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
 
 		auto staticSamplers = GetStaticSamplers();
@@ -717,9 +724,9 @@ void Demo::BuildRootSignature()
 		CD3DX12_ROOT_PARAMETER slotRootParameter[4];
 
 		// Perfomance TIP: Order from most frequent to least frequent.
-		slotRootParameter[0].InitAsConstantBufferView(0);
-		slotRootParameter[1].InitAsConstantBufferView(1);
-		slotRootParameter[2].InitAsShaderResourceView(0, 1);
+		slotRootParameter[0].InitAsShaderResourceView(0, 1);
+		slotRootParameter[1].InitAsConstantBufferView(0);
+		slotRootParameter[2].InitAsShaderResourceView(1, 1);
 		slotRootParameter[3].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
 
 		auto staticSamplers = GetStaticSamplers();
@@ -806,18 +813,23 @@ void Demo::BuildShadersAndInputLayout()
 
 	mShaders["vecAddCS"] = D3D12Util::CompileShader(L"Shaders\\VecAdd.hlsl", nullptr, "CS", "cs_5_0");
 
-	mDefaultInputLayout.clear();
-	mDefaultInputLayout.insert(mDefaultInputLayout.end(), std::begin(InputLayouts::inputLayoutPosTexNorCol), std::end(InputLayouts::inputLayoutPosTexNorCol));
+	mDefaultInputLayout =
+	{
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 0 },
+		{ "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 20, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 0 },
+		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 0 }
+	};
 
 	mTreeSpriteInputLayout =
 	{
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "SIZE", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 0 },
+		{ "SIZE", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 0 },
 	};
 
 	mTessellationInputLayout =
 	{
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 0 },
 	};
 }
 
@@ -1190,8 +1202,7 @@ void Demo::BuildFrameResources()
 {
 	for (int i = 0; i < gNumFrameResources; ++i)
 	{
-		mFrameResources.push_back(std::make_unique<FrameResource>(mD3D12Device.Get(),
-			2, (UINT)mAllRitems.size(), (UINT)mMaterials.size()));
+		mFrameResources.push_back(std::make_unique<FrameResource>(mD3D12Device.Get(), 2, mAllRitems, (UINT)mMaterials.size()));
 	}
 }
 
@@ -1268,6 +1279,10 @@ void Demo::BuildRenderItems()
 	gridRitem->IndexCount = gridRitem->Geo->DrawArgs["grid"].IndexCount;
 	gridRitem->StartIndexLocation = gridRitem->Geo->DrawArgs["grid"].StartIndexLocation;
 	gridRitem->BaseVertexLocation = gridRitem->Geo->DrawArgs["grid"].BaseVertexLocation;
+	gridRitem->InstanceCount = 1;
+	gridRitem->Instances.resize(1);
+	gridRitem->Instances[0].World = gridRitem->World;
+	gridRitem->Instances[0].MaterialIndex = gridRitem->Mat->MaterialIndex;
 	mRitemLayer[(int)RenderLayer::Opaque].push_back(gridRitem.get());
 
 	auto boxRitem = std::make_unique<RenderItem>();
@@ -1280,6 +1295,10 @@ void Demo::BuildRenderItems()
 	boxRitem->IndexCount = boxRitem->Geo->DrawArgs["box"].IndexCount;
 	boxRitem->StartIndexLocation = boxRitem->Geo->DrawArgs["box"].StartIndexLocation;
 	boxRitem->BaseVertexLocation = boxRitem->Geo->DrawArgs["box"].BaseVertexLocation;
+	boxRitem->InstanceCount = 1;
+	boxRitem->Instances.resize(1);
+	boxRitem->Instances[0].World = boxRitem->World;
+	boxRitem->Instances[0].MaterialIndex = boxRitem->Mat->MaterialIndex;
 	mRitemLayer[(int)RenderLayer::Opaque].push_back(boxRitem.get());
 
 	auto reflectedBoxRitem = std::make_unique<RenderItem>();
@@ -1303,6 +1322,10 @@ void Demo::BuildRenderItems()
 	mirrorItem->IndexCount = mirrorItem->Geo->DrawArgs["mirror"].IndexCount;
 	mirrorItem->StartIndexLocation = mirrorItem->Geo->DrawArgs["mirror"].StartIndexLocation;
 	mirrorItem->BaseVertexLocation = mirrorItem->Geo->DrawArgs["mirror"].BaseVertexLocation;
+	mirrorItem->InstanceCount = 1;
+	mirrorItem->Instances.resize(1);
+	mirrorItem->Instances[0].World = mirrorItem->World;
+	mirrorItem->Instances[0].MaterialIndex = mirrorItem->Mat->MaterialIndex;
 
 	mRitemLayer[(int)RenderLayer::Mirrors].push_back(mirrorItem.get());
 	mRitemLayer[(int)RenderLayer::Transparent].push_back(mirrorItem.get());
@@ -1316,6 +1339,10 @@ void Demo::BuildRenderItems()
 	treeSpritesRitem->IndexCount = treeSpritesRitem->Geo->DrawArgs["points"].IndexCount;
 	treeSpritesRitem->StartIndexLocation = treeSpritesRitem->Geo->DrawArgs["points"].StartIndexLocation;
 	treeSpritesRitem->BaseVertexLocation = treeSpritesRitem->Geo->DrawArgs["points"].BaseVertexLocation;
+	treeSpritesRitem->InstanceCount = 1;
+	treeSpritesRitem->Instances.resize(1);
+	treeSpritesRitem->Instances[0].World = treeSpritesRitem->World;
+	treeSpritesRitem->Instances[0].MaterialIndex = treeSpritesRitem->Mat->MaterialIndex;
 	mRitemLayer[(int)RenderLayer::AlphaTestedTreeSprites].push_back(treeSpritesRitem.get());
 
 	auto quadPatchRitem = std::make_unique<RenderItem>();
@@ -1328,6 +1355,10 @@ void Demo::BuildRenderItems()
 	quadPatchRitem->IndexCount = quadPatchRitem->Geo->DrawArgs["quadpatch"].IndexCount;
 	quadPatchRitem->StartIndexLocation = quadPatchRitem->Geo->DrawArgs["quadpatch"].StartIndexLocation;
 	quadPatchRitem->BaseVertexLocation = quadPatchRitem->Geo->DrawArgs["quadpatch"].BaseVertexLocation;
+	quadPatchRitem->InstanceCount = 1;
+	quadPatchRitem->Instances.resize(1);
+	quadPatchRitem->Instances[0].World = quadPatchRitem->World;
+	quadPatchRitem->Instances[0].MaterialIndex = quadPatchRitem->Mat->MaterialIndex;
 	mRitemLayer[(int)RenderLayer::Tessellation].push_back(quadPatchRitem.get());
 
 	auto fbxRitem = std::make_unique<RenderItem>();
@@ -1340,6 +1371,13 @@ void Demo::BuildRenderItems()
 	fbxRitem->IndexCount = fbxRitem->Geo->DrawArgs["fbx"].IndexCount;
 	fbxRitem->StartIndexLocation = fbxRitem->Geo->DrawArgs["fbx"].StartIndexLocation;
 	fbxRitem->BaseVertexLocation = fbxRitem->Geo->DrawArgs["fbx"].BaseVertexLocation;
+	fbxRitem->InstanceCount = 5;
+	fbxRitem->Instances.resize(5);
+	for (int i = 0; i < 5; i++)
+	{
+		XMStoreFloat4x4(&(fbxRitem->Instances[i].World), XMMatrixTranslation(0, 0, static_cast<float>(-5 + rand() % (10 + 1))));
+		fbxRitem->Instances[i].MaterialIndex = quadPatchRitem->Mat->MaterialIndex;
+	}
 	mRitemLayer[(int)RenderLayer::Opaque].push_back(fbxRitem.get());
 
 	mAllRitems.push_back(std::move(gridRitem));
@@ -1559,15 +1597,15 @@ void Demo::BuildPSO()
 
 void Demo::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)
 {
-	UINT objCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(ObjectConstants));
+	UINT objCBByteSize = sizeof(InstanceData)/*D3D12Util::CalcConstantBufferByteSize(sizeof(ObjectConstants))*/;
 	UINT matCBByteSize = sizeof(MaterialData)/*D3D12Util::CalcConstantBufferByteSize(sizeof(MaterialData))*/;
 
-	auto objectCB = mCurrFrameResource->ObjectCB->Resource();
 	auto matCB = mCurrFrameResource->MaterialCB->Resource();
 	// For each render item...
 	for (size_t i = 0; i < ritems.size(); ++i)
 	{
 		auto ri = ritems[i];
+		auto objectCB = mCurrFrameResource->InstanceBuffer[ri]->Resource();
 
 		cmdList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
 		cmdList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
@@ -1577,13 +1615,13 @@ void Demo::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector
 		tex.Offset(ri->Mat->DiffuseSrvHeapIndex, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 		cmdList->SetGraphicsRootDescriptorTable(3, tex);
 
-		D3D12_GPU_VIRTUAL_ADDRESS objAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
-		cmdList->SetGraphicsRootConstantBufferView(0, objAddress);
+		D3D12_GPU_VIRTUAL_ADDRESS objAddress = objectCB->GetGPUVirtualAddress();
+		cmdList->SetGraphicsRootShaderResourceView(0, objAddress);
 
-		D3D12_GPU_VIRTUAL_ADDRESS matAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex * matCBByteSize;
+		D3D12_GPU_VIRTUAL_ADDRESS matAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MaterialIndex * matCBByteSize;
 		cmdList->SetGraphicsRootShaderResourceView(2, matAddress);
 
-		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
+		cmdList->DrawIndexedInstanced(ri->IndexCount, ri->InstanceCount, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
 	}
 }
 
@@ -1591,20 +1629,21 @@ void Demo::DrawRenderItemsNew(ID3D12GraphicsCommandList* cmdList, const std::vec
 {
 	UINT objCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(ObjectConstants));
 
-	auto objectCB = mCurrFrameResource->ObjectCB->Resource();
 	// For each render item...
 	for (size_t i = 0; i < ritems.size(); ++i)
 	{
 		auto ri = ritems[i];
 
+		auto objectCB = mCurrFrameResource->InstanceBuffer[ri]->Resource();
+
 		cmdList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
 		cmdList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
 		cmdList->IASetPrimitiveTopology(ri->PrimitiveType);
 
-		D3D12_GPU_VIRTUAL_ADDRESS objAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
-		cmdList->SetGraphicsRootConstantBufferView(0, objAddress);
+		D3D12_GPU_VIRTUAL_ADDRESS objAddress = objectCB->GetGPUVirtualAddress();
+		cmdList->SetGraphicsRootShaderResourceView(0, objAddress);
 
-		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
+		cmdList->DrawIndexedInstanced(ri->IndexCount, ri->InstanceCount, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
 	}
 }
 

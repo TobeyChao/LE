@@ -142,9 +142,6 @@
     <ClCompile Include="GeometryGenerator.cpp">
       <Filter>Common</Filter>
     </ClCompile>
-    <ClCompile Include="FrameResource.cpp">
-      <Filter>App</Filter>
-    </ClCompile>
     <ClCompile Include="WICTextureLoader12.cpp">
       <Filter>Common</Filter>
     </ClCompile>

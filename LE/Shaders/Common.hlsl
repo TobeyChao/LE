@@ -1,15 +1,15 @@
 #include "DataType.hlsl"
 
-cbuffer cbPerObject : register(b0)
-{
-    float4x4 gWorld;
-    uint gMaterialIndex;
-    uint gObjPad0;
-    uint gObjPad1;
-    uint gObjPad2;
-}
+// cbuffer cbPerObject : register(b0)
+// {
+//     float4x4 gWorld;
+//     uint gMaterialIndex;
+//     uint gObjPad0;
+//     uint gObjPad1;
+//     uint gObjPad2;
+// }
 
-cbuffer cbPass : register(b1)
+cbuffer cbPass : register(b0)
 {
     float4x4 gView;
     float4x4 gInvView;

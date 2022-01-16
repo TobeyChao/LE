@@ -3,47 +3,56 @@
 #include "PrimitiveTypes.h"
 #include "UploadBuffer.h"
 
-struct ObjectConstants
+#include "MeshGeometry.h"
+
+struct RenderItem
 {
-	DirectX::XMFLOAT4X4 World;
-	UINT     MaterialIndex;
-	UINT     ObjPad0;
-	UINT     ObjPad1;
-	UINT     ObjPad2;
-};
+	RenderItem() = default;
 
-struct PassConstants
-{
-	DirectX::XMFLOAT4X4 View;
-	DirectX::XMFLOAT4X4 InvView;
-	DirectX::XMFLOAT4X4 Proj;
-	DirectX::XMFLOAT4X4 InvProj;
-	DirectX::XMFLOAT4X4 ViewProj;
-	DirectX::XMFLOAT4X4 InvViewProj;
-	DirectX::XMFLOAT3 EyePosW = { 0.0f, 0.0f, 0.0f };
-	float cbPerObjectPad1 = 0.0f;
-	DirectX::XMFLOAT2 RenderTargetSize = { 0.0f, 0.0f };
-	DirectX::XMFLOAT2 InvRenderTargetSize = { 0.0f, 0.0f };
-	float NearZ = 0.0f;
-	float FarZ = 0.0f;
-	float TotalTime = 0.0f;
-	float DeltaTime = 0.0f;
+	// World matrix of the shape that describes the object's local space
+	// relative to the world space, which defines the position, orientation,
+	// and scale of the object in the world.
+	DirectX::XMFLOAT4X4 World = MathHelper::Identity4x4();
 
-	DirectX::XMFLOAT4 AmbientLight = { 0.0f, 0.0f, 0.0f, 1.0f };
+	// Dirty flag indicating the object data has changed and we need to update the constant buffer.
+	// Because we have an object cbuffer for each FrameResource, we have to apply the
+	// update to each FrameResource.  Thus, when we modify obect data we should set 
+	// NumFramesDirty = gNumFrameResources so that each frame resource gets the update.
+	int NumFramesDirty = gNumFrameResources;
 
-	// Indices [0, NUM_DIR_LIGHTS) are directional lights;
-	// indices [NUM_DIR_LIGHTS, NUM_DIR_LIGHTS+NUM_POINT_LIGHTS) are point lights;
-	// indices [NUM_DIR_LIGHTS+NUM_POINT_LIGHTS, NUM_DIR_LIGHTS+NUM_POINT_LIGHT+NUM_SPOT_LIGHTS)
-	// are spot lights for a maximum of MaxLights per object.
-	Light Lights[MaxLights];
+	// Index into GPU constant buffer corresponding to the ObjectCB for this render item.
+	UINT ObjCBIndex = -1;
+
+	Material* Mat = nullptr;
+	MeshGeometry* Geo = nullptr;
+
+	// Primitive topology.
+	D3D12_PRIMITIVE_TOPOLOGY PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+
+	std::vector<InstanceData> Instances;
+
+	// DrawIndexedInstanced parameters.
+	UINT IndexCount = 0;
+	UINT InstanceCount = 0;
+	UINT StartIndexLocation = 0;
+	int BaseVertexLocation = 0;
 };
 
 struct FrameResource
 {
-	FrameResource(ID3D12Device* device, UINT passCount, UINT objectCount, UINT materialCount);
+	FrameResource(ID3D12Device* device, UINT passCount, const std::vector<std::unique_ptr<RenderItem>>& instances, UINT materialCount)
+	{
+		ThrowIfFailed(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(CmdListAlloc.GetAddressOf())));
+
+		PassCB = std::make_unique<UploadBuffer<PassConstants>>(device, passCount, true);
+		MaterialCB = std::make_unique<UploadBuffer<MaterialData>>(device, materialCount, false);
+		for (int i = 0; i < instances.size(); i++)
+		{
+			InstanceBuffer[instances[i].get()] = std::make_unique<UploadBuffer<InstanceData>>(device, instances[i]->InstanceCount, false);
+		}
+	}
 	FrameResource(const FrameResource& rhs) = delete;
 	FrameResource& operator=(const FrameResource& rhs) = delete;
-	~FrameResource();
 
 	// We cannot reset the allocator until the GPU is done processing the commands.
 	// So each frame needs their own allocator.
@@ -52,8 +61,8 @@ struct FrameResource
 	// We cannot update a cbuffer until the GPU is done processing the commands
 	// that reference it.  So each frame needs their own cbuffers.
 	std::unique_ptr<UploadBuffer<PassConstants>> PassCB = nullptr;
-	std::unique_ptr<UploadBuffer<ObjectConstants>> ObjectCB = nullptr;
 	std::unique_ptr<UploadBuffer<MaterialData>> MaterialCB = nullptr;
+	std::unordered_map<RenderItem*, std::unique_ptr<UploadBuffer<InstanceData>> > InstanceBuffer;
 	// Fence value to mark commands up to this fence point.  This lets us
 	// check if these frame resources are still in use by the GPU.
 	UINT64 Fence = 0;
