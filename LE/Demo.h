@@ -19,6 +19,7 @@ enum class RenderLayer : int
 	AlphaTestedTreeSprites,
 	Shadow,
 	Tessellation,
+	Sky,
 	Count
 };
 
@@ -143,4 +144,5 @@ private:
 
 	ComPtr<ID3D12RootSignature> mTessellationRootSignature = nullptr;
 	ComPtr<ID3D12RootSignature> mBillboardRootSignature = nullptr;
+	ComPtr<ID3D12RootSignature> mSkyRootSignature = nullptr;
 };

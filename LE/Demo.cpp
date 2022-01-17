@@ -312,6 +312,11 @@ void Demo::Draw()
 	mCommandList->SetGraphicsRootSignature(mTessellationRootSignature.Get());
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Tessellation]);
 
+	// äÖÈ¾Ìì¿Õ
+	mCommandList->SetPipelineState(mPSOs["sky"].Get());
+	mCommandList->SetGraphicsRootSignature(mSkyRootSignature.Get());
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Sky]);
+
 	if (mEnableMSAA)
 	{
 		// Resolve the MSAA render target.
@@ -579,11 +584,18 @@ void Demo::LoadTextures()
 	D3D12Util::LoadTexture(mD3D12Device.Get(), mCommandList.Get(), baseColorTex->Filename.c_str(),
 		baseColorTex->Resource.GetAddressOf(), baseColorTex->UploadHeap.GetAddressOf());
 
+	auto skyTex = std::make_unique<Texture>();
+	skyTex->Name = "skyTex";
+	skyTex->Filename = L"Textures/SkyBox.dds";
+	D3D12Util::LoadTexture(mD3D12Device.Get(), mCommandList.Get(), skyTex->Filename.c_str(),
+		skyTex->Resource.GetAddressOf(), skyTex->UploadHeap.GetAddressOf());
+
 	mTextures[gridTex->Name] = std::move(gridTex);
 	mTextures[woodTex->Name] = std::move(woodTex);
 	mTextures[iceTex->Name] = std::move(iceTex);
 	mTextures[treeArrayTex->Name] = std::move(treeArrayTex);
 	mTextures[baseColorTex->Name] = std::move(baseColorTex);
+	mTextures[skyTex->Name] = std::move(skyTex);
 }
 
 void Demo::BuildMaterials()
@@ -629,11 +641,20 @@ void Demo::BuildMaterials()
 	baseColorMat->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
 	baseColorMat->Roughness = 0.125f;
 
+	auto skyMat = std::make_unique<Material>();
+	skyMat->Name = "sky";
+	skyMat->MaterialIndex = 5;
+	skyMat->DiffuseSrvHeapIndex = 5;
+	skyMat->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	skyMat->FresnelR0 = XMFLOAT3(0.1f, 0.1f, 0.1f);
+	skyMat->Roughness = 1.0f;
+
 	mMaterials["floor"] = std::move(floor);
 	mMaterials["wood"] = std::move(wood);
 	mMaterials["icemirror"] = std::move(icemirror);
 	mMaterials["treeSprites"] = std::move(treeSprites);
 	mMaterials["baseColorMat"] = std::move(baseColorMat);
+	mMaterials["sky"] = std::move(skyMat);
 }
 
 void Demo::BuildRootSignature()
@@ -784,6 +805,46 @@ void Demo::BuildRootSignature()
 			serializedRootSig->GetBufferSize(),
 			IID_PPV_ARGS(mComputeRootSignature.GetAddressOf()));
 	}
+
+	// Sky RootSignature
+	{
+		CD3DX12_DESCRIPTOR_RANGE texTable;
+		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
+
+		// Root parameter can be a table, root descriptor or root constants.
+		CD3DX12_ROOT_PARAMETER slotRootParameter[4];
+
+		// Perfomance TIP: Order from most frequent to least frequent.
+		slotRootParameter[0].InitAsShaderResourceView(0, 1);
+		slotRootParameter[1].InitAsConstantBufferView(0);
+		slotRootParameter[2].InitAsShaderResourceView(1, 1);
+		slotRootParameter[3].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
+
+		auto staticSamplers = GetStaticSamplers();
+
+		// A root signature is an array of root parameters.
+		CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(4, slotRootParameter,
+			(UINT)staticSamplers.size(), staticSamplers.data(),
+			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+		// create a root signature with a single slot which points to a descriptor range consisting of a single constant buffer
+		ComPtr<ID3DBlob> serializedRootSig = nullptr;
+		ComPtr<ID3DBlob> errorBlob = nullptr;
+		HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+			serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
+
+		if (errorBlob != nullptr)
+		{
+			::OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+		}
+		ThrowIfFailed(hr);
+
+		ThrowIfFailed(mD3D12Device->CreateRootSignature(
+			0,
+			serializedRootSig->GetBufferPointer(),
+			serializedRootSig->GetBufferSize(),
+			IID_PPV_ARGS(mSkyRootSignature.GetAddressOf())));
+	}
 }
 
 void Demo::BuildShadersAndInputLayout()
@@ -812,6 +873,9 @@ void Demo::BuildShadersAndInputLayout()
 	mShaders["tessPS"] = D3D12Util::CompileShader(L"Shaders\\BezierTessellation.hlsl", nullptr, "PS", "ps_5_1");
 
 	mShaders["vecAddCS"] = D3D12Util::CompileShader(L"Shaders\\VecAdd.hlsl", nullptr, "CS", "cs_5_0");
+
+	mShaders["skyVS"] = D3D12Util::CompileShader(L"Shaders\\Sky.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["skyPS"] = D3D12Util::CompileShader(L"Shaders\\Sky.hlsl", nullptr, "PS", "ps_5_1");
 
 	mDefaultInputLayout =
 	{
@@ -1127,6 +1191,54 @@ void Demo::BuildGeometry()
 
 		loader.FreeScene();
 	}
+	// Sky
+	{
+		GeometryGenerator::MeshData model = geoGen.CreateSphere(50.0f, 20, 20);
+		std::vector<PrimitiveTypes::PosTexNorColVertex> vertices(model.Vertices.size());
+
+		for (size_t i = 0; i < model.Vertices.size(); ++i)
+		{
+			auto& p = model.Vertices[i];
+			vertices[i].Position = { p.Position.x, p.Position.y, p.Position.z };
+			vertices[i].TexCoord = p.TexC;
+			vertices[i].Normal = p.Normal;
+			vertices[i].Color = XMFLOAT4(DirectX::Colors::DarkGreen);
+		}
+
+		std::vector<std::uint16_t> indices;
+		indices.insert(indices.end(), std::begin(model.GetIndices16()), std::end(model.GetIndices16()));
+
+		const UINT vbByteSize = (UINT)vertices.size() * sizeof(PrimitiveTypes::PosTexNorColVertex);
+		const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
+
+		auto geo = std::make_unique<MeshGeometry>();
+		geo->Name = "skyGeo";
+
+		ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+		CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+
+		ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+		CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+
+		geo->VertexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
+			mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
+
+		geo->IndexBufferGPU = D3D12Util::CreateDefaultBuffer(mD3D12Device.Get(),
+			mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+
+		geo->VertexByteStride = sizeof(PrimitiveTypes::PosTexNorColVertex);
+		geo->VertexBufferByteSize = vbByteSize;
+		geo->IndexFormat = DXGI_FORMAT_R16_UINT;
+		geo->IndexBufferByteSize = ibByteSize;
+
+		SubmeshGeometry submeshBox;
+		submeshBox.IndexCount = (UINT)indices.size();
+		submeshBox.StartIndexLocation = 0;
+		submeshBox.BaseVertexLocation = 0;
+
+		geo->DrawArgs["sky"] = submeshBox;
+		mGeometries[geo->Name] = std::move(geo);
+	}
 }
 
 void Demo::BuildLandGeometry()
@@ -1212,7 +1324,7 @@ void Demo::BuildDescriptorHeaps()
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	srvHeapDesc.NodeMask = 0;
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	srvHeapDesc.NumDescriptors = 5;
+	srvHeapDesc.NumDescriptors = 6;
 	ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(mSrvDescriptorHeap.GetAddressOf())));
 }
 
@@ -1228,6 +1340,7 @@ void Demo::BuildShaderResourceViews()
 	auto iceTex = mTextures["ice"]->Resource;
 	auto treeTex = mTextures["treeArrayTex"]->Resource;
 	auto baseColorTex = mTextures["baseColor"]->Resource;
+	auto skyTex = mTextures["skyTex"]->Resource;
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -1266,6 +1379,16 @@ void Demo::BuildShaderResourceViews()
 	srvDesc.Texture2D.MipLevels = baseColorTex->GetDesc().MipLevels;
 	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
 	mD3D12Device->CreateShaderResourceView(baseColorTex.Get(), &srvDesc, hDescriptor);
+
+	hDescriptor.Offset(1, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+	srvDesc = {};
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Format = skyTex->GetDesc().Format;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+	srvDesc.TextureCube.MostDetailedMip = 0;
+	srvDesc.TextureCube.MipLevels = skyTex->GetDesc().MipLevels;
+	srvDesc.TextureCube.ResourceMinLODClamp = 0.0f;
+	mD3D12Device->CreateShaderResourceView(skyTex.Get(), &srvDesc, hDescriptor);
 }
 
 void Demo::BuildRenderItems()
@@ -1308,7 +1431,7 @@ void Demo::BuildRenderItems()
 	// Update reflection world matrix.
 	XMVECTOR mirrorPlane = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
 	XMMATRIX R = XMMatrixReflect(mirrorPlane);
-	XMStoreFloat4x4(&reflectedBoxRitem->World, XMLoadFloat4x4(&(boxRitem->World)) * R);
+	XMStoreFloat4x4(&reflectedBoxRitem->Instances[0].World, XMLoadFloat4x4(&(boxRitem->World)) * R);
 	reflectedBoxRitem->ObjCBIndex = 2;
 	mRitemLayer[(int)RenderLayer::Reflected].push_back(reflectedBoxRitem.get());
 
@@ -1382,6 +1505,21 @@ void Demo::BuildRenderItems()
 	}
 	mRitemLayer[(int)RenderLayer::Opaque].push_back(fbxRitem.get());
 
+	auto SkyRitem = std::make_unique<RenderItem>();
+	SkyRitem->World = MathHelper::Identity4x4();
+	SkyRitem->ObjCBIndex = 4;
+	SkyRitem->Mat = mMaterials["sky"].get();
+	SkyRitem->Geo = mGeometries["skyGeo"].get();
+	SkyRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	SkyRitem->IndexCount = SkyRitem->Geo->DrawArgs["sky"].IndexCount;
+	SkyRitem->StartIndexLocation = SkyRitem->Geo->DrawArgs["sky"].StartIndexLocation;
+	SkyRitem->BaseVertexLocation = SkyRitem->Geo->DrawArgs["sky"].BaseVertexLocation;
+	SkyRitem->InstanceCount = 1;
+	SkyRitem->Instances.resize(1);
+	SkyRitem->Instances[0].World = SkyRitem->World;
+	SkyRitem->Instances[0].MaterialIndex = SkyRitem->Mat->MaterialIndex;
+	mRitemLayer[(int)RenderLayer::Sky].push_back(SkyRitem.get());
+
 	mAllRitems.push_back(std::move(gridRitem));
 	mAllRitems.push_back(std::move(boxRitem));
 	mAllRitems.push_back(std::move(reflectedBoxRitem));
@@ -1389,6 +1527,7 @@ void Demo::BuildRenderItems()
 	mAllRitems.push_back(std::move(treeSpritesRitem));
 	mAllRitems.push_back(std::move(quadPatchRitem));
 	mAllRitems.push_back(std::move(fbxRitem));
+	mAllRitems.push_back(std::move(SkyRitem));
 }
 
 void Demo::BuildPSO()
@@ -1594,6 +1733,33 @@ void Demo::BuildPSO()
 		};
 		computePsoDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
 		mD3D12Device->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&mPSOs["vecAdd"]));
+	}
+	//
+	// PSO for Sky
+	//
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC skyPsoDesc = opaquePsoDesc;
+
+		// The camera is inside the sky sphere, so just turn off culling.
+		skyPsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+
+		// Make sure the depth function is LESS_EQUAL and not just LESS.  
+		// Otherwise, the normalized depth values at z = 1 (NDC) will 
+		// fail the depth test if the depth buffer was cleared to 1.
+		skyPsoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+		skyPsoDesc.pRootSignature = mSkyRootSignature.Get();
+		skyPsoDesc.VS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["skyVS"]->GetBufferPointer()),
+			mShaders["skyVS"]->GetBufferSize()
+		};
+		skyPsoDesc.PS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["skyPS"]->GetBufferPointer()),
+			mShaders["skyPS"]->GetBufferSize()
+		};
+		skyPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&skyPsoDesc, IID_PPV_ARGS(&mPSOs["sky"])));
 	}
 }
 
