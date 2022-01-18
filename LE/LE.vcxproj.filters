@@ -98,6 +98,9 @@
     <ClInclude Include="Demo.h">
       <Filter>App</Filter>
     </ClInclude>
+    <ClInclude Include="ShadowMap.h">
+      <Filter>Common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Main.cpp">
@@ -153,6 +156,9 @@
     </ClCompile>
     <ClCompile Include="imgui_tables.cpp">
       <Filter>ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="ShadowMap.cpp">
+      <Filter>Common</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

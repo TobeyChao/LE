@@ -1,3 +1,7 @@
+#ifndef NUM_DIR_LIGHTS
+    #define NUM_DIR_LIGHTS 1
+#endif
+
 #include "Common.hlsl"
 
 Texture2DArray gTreeMapArray : register(t0);
@@ -95,40 +99,28 @@ float4 PS(GeoOut vertIn) : SV_Target
     float roughness = matData.Roughness;
     uint diffuseTexIndex = matData.DiffuseMapIndex;
 
-	float3 uvw = float3(vertIn.TexC, vertIn.PrimID % 3);
+    float3 uvw = float3(vertIn.TexC, vertIn.PrimID % 3);
     float4 diffuseAlbedo = gTreeMapArray.Sample(gsamAnisotropicWrap, uvw) * diffuseAlbedoMat;
-#ifdef ALPHA_TEST
-	// Discard pixel if texture alpha < 0.1.  We do this test as soon 
-	// as possible in the shader so that we can potentially exit the
-	// shader early, thereby skipping the rest of the shader code.
-	clip(diffuseAlbedo.a - 0.1f);
-#endif
+    #ifdef ALPHA_TEST
+        // Discard pixel if texture alpha < 0.1.  We do this test as soon 
+        // as possible in the shader so that we can potentially exit the
+        // shader early, thereby skipping the rest of the shader code.
+        clip(diffuseAlbedo.a - 0.1f);
+    #endif
 
     // 法线
     float3 worldNormal = normalize(vertIn.NormalW);
-    // 灯光方向
-    float3 worldLightDir = normalize(-gLights[0].Direction);
     // 视点方向
     float3 viewDir = normalize(gEyePosW - vertIn.PosW);
-    // 朗伯余弦定律
-    float cosIncidentAngle = saturate(dot(worldLightDir, worldNormal));
-    // 光强
-    float3 lightStrength = gLights[0].Strength.rgb * cosIncidentAngle;
-    // 1.漫反射光
-    float3 diffuseColor = lightStrength * diffuseAlbedo.rgb;
-    // 2.镜面光
-    // 2.1表面粗糙度
-    float3 halfDir =  normalize(viewDir + worldLightDir);
-    float m = (1.0f - roughness) * 256.0f;
-    float roughnessFactor = (m + 8.0f) * pow(max(dot(halfDir, worldNormal), 0.0f), m) / 8.0f;
-    // 2.2菲涅尔系数
-    float f0 = 1.0f - cosIncidentAngle;
-    float3 fresnelFactor = fresnelR0 + (1.0f - fresnelR0)*(f0*f0*f0*f0*f0);
-    // 最终镜面光颜色
-    float3 specularColor = lightStrength * fresnelFactor * roughnessFactor;
-    // 3.环境光
+
+    float3 shadowFactor = 1.0f;
+    const float shininess = 1.0f - roughness;
+    Material mat = { diffuseAlbedo, fresnelR0, shininess};
+    float4 directLight = ComputeLighting(gLights, mat, vertIn.PosW, worldNormal, viewDir, shadowFactor);
+    // 环境光
     float4 ambientColor = gAmbientLight * diffuseAlbedo;
     // 最终颜色
-    float3 color = ambientColor.rgb + diffuseColor + specularColor;
-    return float4(color, diffuseAlbedo.a);
+    float4 litColor = ambientColor + directLight;
+    litColor.a = diffuseAlbedo.a;
+    return litColor;
 }

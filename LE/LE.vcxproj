@@ -41,6 +41,7 @@
     <ClInclude Include="MathHelper.h" />
     <ClInclude Include="MeshGeometry.h" />
     <ClInclude Include="PrimitiveTypes.h" />
+    <ClInclude Include="ShadowMap.h" />
     <ClInclude Include="TSingleton.h" />
     <ClInclude Include="UploadBuffer.h" />
     <ClInclude Include="WICTextureLoader12.h" />
@@ -63,6 +64,7 @@
     <ClCompile Include="imgui_widgets.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="MathHelper.cpp" />
+    <ClCompile Include="ShadowMap.cpp" />
     <ClCompile Include="WICTextureLoader12.cpp" />
   </ItemGroup>
   <ItemGroup>

@@ -57,6 +57,7 @@ float3 shadowFactor)
     float3 result = 0.0f;
     int i = 0;
     #if (NUM_DIR_LIGHTS > 0)
+        [unroll]
         for (i = 0; i < NUM_DIR_LIGHTS; ++i)
         {
             result += shadowFactor[0] * ComputeDirectionalLight(gLights[i], mat, worldNormal, toEye);

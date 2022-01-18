@@ -21,7 +21,8 @@ ImFont* font;
 
 Demo::Demo()
 {
-
+	mSceneBounds.Center = XMFLOAT3(0.0f, 0.0f, 0.0f);
+	mSceneBounds.Radius = sqrtf(10.0f * 10.0f + 15.0f * 15.0f);
 }
 
 Demo::~Demo()
@@ -44,9 +45,6 @@ void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 	D3D12App::Initialize(hwnd, clientWidth, clientHeight);
 
 #pragma region IMGUI
-
-#pragma endregion
-
 	// Setup Dear ImGui context
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
@@ -82,6 +80,9 @@ void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 
 	font = io.Fonts->AddFontFromFileTTF("Fonts\\Zpix.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
 	IM_ASSERT(font != NULL);
+#pragma endregion
+
+	mShadowMap = std::make_unique<ShadowMap>(mD3D12Device.Get(), 2048, 2048);
 
 	ThrowIfFailed(mCommandList->Reset(mCommandAllocator.Get(), nullptr));
 
@@ -162,6 +163,8 @@ void Demo::Update()
 	UpdateMainPassCB();
 	UpdateReflectedMainPassCB();
 	UpdateMaterialCB();
+	UpdateShadowTransform();
+	UpdateShadowPassCB();
 }
 
 void Demo::PrepareUI()
@@ -416,10 +419,6 @@ void Demo::UpdateCamera()
 	mCameras["MainCamera"]->ComputeInfo();
 }
 
-void Demo::UpdateInstanceData()
-{
-}
-
 void Demo::UpdateObjectCBs()
 {
 	// Update the constant buffer with the latest worldViewProj matrix.
@@ -445,6 +444,43 @@ void Demo::UpdateObjectCBs()
 			e->NumFramesDirty--;
 		}
 	}
+}
+
+void Demo::UpdateShadowTransform()
+{
+	XMVECTOR lightDir = XMLoadFloat3(&mRotatedLightDirections);
+	XMVECTOR lightPos = -2.0f * mSceneBounds.Radius * lightDir;
+	XMVECTOR targetPos = XMLoadFloat3(&mSceneBounds.Center);
+	XMVECTOR lightUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+	XMMATRIX lightView = XMMatrixLookAtLH(lightPos, targetPos, lightUp);
+
+	XMStoreFloat3(&mLightPosW, lightPos);
+
+	// 把包围球变换到光源空间
+	XMFLOAT3 sphereCenterLS;
+	XMStoreFloat3(&sphereCenterLS, XMVector3TransformCoord(targetPos, lightView));
+
+	float l = sphereCenterLS.x - mSceneBounds.Radius;
+	float b = sphereCenterLS.y - mSceneBounds.Radius;
+	float n = sphereCenterLS.z - mSceneBounds.Radius;
+	float r = sphereCenterLS.x + mSceneBounds.Radius;
+	float t = sphereCenterLS.y + mSceneBounds.Radius;
+	float f = sphereCenterLS.z + mSceneBounds.Radius;
+
+	mLightNearZ = n;
+	mLightFarZ = f;
+	XMMATRIX lightProj = XMMatrixOrthographicOffCenterLH(l, r, b, t, n, f);
+
+	XMMATRIX T(
+		0.5f, 0.0f, 0.0f, 0.0f,
+		0.0f, -0.5f, 0.0f, 0.0f,
+		0.0f, 0.0f, 1.0f, 0.0f,
+		0.5f, 0.0f, 0.0f, 1.0f);
+
+	XMMATRIX S = lightView * lightProj * T;
+	XMStoreFloat4x4(&mLightView, lightView);
+	XMStoreFloat4x4(&mLightProj, lightProj);
+	XMStoreFloat4x4(&mShadowTransform, S);
 }
 
 void Demo::UpdateMainPassCB()
@@ -520,6 +556,35 @@ void Demo::UpdateMaterialCB()
 			mat->NumFramesDirty--;
 		}
 	}
+}
+
+void Demo::UpdateShadowPassCB()
+{
+	XMMATRIX view = XMLoadFloat4x4(&mLightView);
+	XMMATRIX proj = XMLoadFloat4x4(&mLightProj);
+
+	XMMATRIX viewProj = XMMatrixMultiply(view, proj);
+	XMMATRIX invView = XMMatrixInverse(&XMMatrixDeterminant(view), view);
+	XMMATRIX invProj = XMMatrixInverse(&XMMatrixDeterminant(proj), proj);
+	XMMATRIX invViewProj = XMMatrixInverse(&XMMatrixDeterminant(viewProj), viewProj);
+
+	UINT w = mShadowMap->Width();
+	UINT h = mShadowMap->Height();
+
+	XMStoreFloat4x4(&mShadowPassCB.View, XMMatrixTranspose(view));
+	XMStoreFloat4x4(&mShadowPassCB.InvView, XMMatrixTranspose(invView));
+	XMStoreFloat4x4(&mShadowPassCB.Proj, XMMatrixTranspose(proj));
+	XMStoreFloat4x4(&mShadowPassCB.InvProj, XMMatrixTranspose(invProj));
+	XMStoreFloat4x4(&mShadowPassCB.ViewProj, XMMatrixTranspose(viewProj));
+	XMStoreFloat4x4(&mShadowPassCB.InvViewProj, XMMatrixTranspose(invViewProj));
+	mShadowPassCB.EyePosW = mLightPosW;
+	mShadowPassCB.RenderTargetSize = XMFLOAT2((float)w, (float)h);
+	mShadowPassCB.InvRenderTargetSize = XMFLOAT2(1.0f / w, 1.0f / h);
+	mShadowPassCB.NearZ = mLightNearZ;
+	mShadowPassCB.FarZ = mLightFarZ;
+
+	auto currPassCB = mCurrFrameResource->PassCB.get();
+	currPassCB->CopyData(2, mShadowPassCB);
 }
 
 void Demo::CalculateFrameStats()
@@ -1314,7 +1379,7 @@ void Demo::BuildFrameResources()
 {
 	for (int i = 0; i < gNumFrameResources; ++i)
 	{
-		mFrameResources.push_back(std::make_unique<FrameResource>(mD3D12Device.Get(), 2, mAllRitems, (UINT)mMaterials.size()));
+		mFrameResources.push_back(std::make_unique<FrameResource>(mD3D12Device.Get(), 3, mAllRitems, (UINT)mMaterials.size()));
 	}
 }
 
@@ -1559,6 +1624,32 @@ void Demo::BuildPSO()
 	ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&opaquePsoDesc, IID_PPV_ARGS(&mPSOs["opaque_solid"])));
 
 	//
+	// PSO for shadow map pass.
+	//
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC smapPsoDesc = opaquePsoDesc;
+		smapPsoDesc.RasterizerState.DepthBias = 100000;
+		smapPsoDesc.RasterizerState.DepthBiasClamp = 0.0f;
+		smapPsoDesc.RasterizerState.SlopeScaledDepthBias = 1.0f;
+		smapPsoDesc.pRootSignature = mRootSignature.Get();
+		smapPsoDesc.VS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["shadowVS"]->GetBufferPointer()),
+			mShaders["shadowVS"]->GetBufferSize()
+		};
+		smapPsoDesc.PS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["shadowOpaquePS"]->GetBufferPointer()),
+			mShaders["shadowOpaquePS"]->GetBufferSize()
+		};
+
+		// Shadow map pass does not have a render target.
+		smapPsoDesc.RTVFormats[0] = DXGI_FORMAT_UNKNOWN;
+		smapPsoDesc.NumRenderTargets = 0;
+		ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&smapPsoDesc, IID_PPV_ARGS(&mPSOs["shadow_opaque"])));
+	}
+
+	//
 	// PSO for transparent objects
 	//
 	{
@@ -1720,6 +1811,7 @@ void Demo::BuildPSO()
 		tessellationPsoDesc.DSVFormat = mDepthStencilFormat;
 		ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&tessellationPsoDesc, IID_PPV_ARGS(&mPSOs["tess"])));
 	}
+
 	//
 	// PSO for compute shader
 	//
@@ -1813,6 +1905,10 @@ void Demo::DrawRenderItemsNew(ID3D12GraphicsCommandList* cmdList, const std::vec
 
 		cmdList->DrawIndexedInstanced(ri->IndexCount, ri->InstanceCount, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
 	}
+}
+
+void Demo::DrawSceneToShadowMap()
+{
 }
 
 std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> Demo::GetStaticSamplers()

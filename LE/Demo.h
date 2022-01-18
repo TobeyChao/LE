@@ -5,6 +5,7 @@
 #include "PrimitiveTypes.h"
 #include "D3D12InputLayouts.h"
 #include "Camera.h"
+#include "ShadowMap.h"
 #include <DirectXColors.h>
 
 using namespace DirectX;
@@ -53,11 +54,12 @@ public:
 
 	void ProcessInput();
 	void UpdateCamera();
-	void UpdateInstanceData();
 	void UpdateObjectCBs();
+	void UpdateShadowTransform();
 	void UpdateMainPassCB();
 	void UpdateReflectedMainPassCB();
 	void UpdateMaterialCB();
+	void UpdateShadowPassCB();
 
 	void CalculateFrameStats();
 
@@ -84,6 +86,7 @@ public:
 
 	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);
 	void DrawRenderItemsNew(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);
+	void DrawSceneToShadowMap();
 
 	std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> GetStaticSamplers();
 
@@ -116,6 +119,7 @@ private:
 	//UINT mPassCbvOffset = 0;
 	PassConstants mMainPassCB;
 	PassConstants mReflectedPassCB;
+	PassConstants mShadowPassCB;
 
 	std::unordered_map<std::string, ComPtr<ID3D12PipelineState>> mPSOs;
 
@@ -129,6 +133,19 @@ private:
 
 	POINT mLastMousePos;
 #pragma endregion
+
+	std::unique_ptr<ShadowMap> mShadowMap;
+	DirectX::BoundingSphere mSceneBounds;
+	float mLightNearZ = 0.0f;
+	float mLightFarZ = 0.0f;
+	XMFLOAT3 mLightPosW;
+	XMFLOAT4X4 mLightView = MathHelper::Identity4x4();
+	XMFLOAT4X4 mLightProj = MathHelper::Identity4x4();
+	XMFLOAT4X4 mShadowTransform = MathHelper::Identity4x4();
+
+	float mLightRotationAngle = 0.0f;
+	XMFLOAT3 mBaseLightDirections = XMFLOAT3(0.57735f, -0.57735f, 0.57735f);
+	XMFLOAT3 mRotatedLightDirections;
 
 	float mSunTheta = 1.25f * XM_PI;
 	float mSunPhi = XM_PIDIV4;

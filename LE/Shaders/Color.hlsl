@@ -1,3 +1,7 @@
+#ifndef NUM_DIR_LIGHTS
+    #define NUM_DIR_LIGHTS 1
+#endif
+
 #include "Common.hlsl"
 
 Texture2D gDiffuseMap[5] : register(t0);
@@ -37,8 +41,8 @@ VertexOut VS(VertexIn vertIn, uint instanceID : SV_INSTANCEID)
     float4x4 world = instData.World;
     float4x4 texTransform = instData.TexTransform;
     uint matIndex = instData.MaterialIndex;
-	vertOut.MatIndex = matIndex;
-    
+    vertOut.MatIndex = matIndex;
+
     float4 posW = mul(float4(vertIn.PosL, 1.0f), world);
     vertOut.PosH = mul(posW, gViewProj);
     vertOut.PosW = posW.xyz;
@@ -57,33 +61,21 @@ float4 PS(VertexOut vertIn) : SV_Target
     float3 fresnelR0 = matData.FresnelR0;
     float roughness = matData.Roughness;
     uint diffuseTexIndex = matData.DiffuseMapIndex;
-
+    float4 diffuseAlbedo = gDiffuseMap[diffuseTexIndex].Sample(gsamLinearWrap, vertIn.TexC) * diffuseAlbedoMat;
     // 法线
     float3 worldNormal = normalize(vertIn.NormalW);
-    // 灯光方向
-    float3 worldLightDir = normalize(-gLights[0].Direction);
     // 视点方向
     float3 viewDir = normalize(gEyePosW - vertIn.PosW);
-    // 朗伯余弦定律
-    float cosIncidentAngle = saturate(dot(worldLightDir, worldNormal));
-    // 光强
-    float3 lightStrength = gLights[0].Strength.rgb * cosIncidentAngle;
-    // 1.漫反射光
-    float4 diffuseAlbedo = gDiffuseMap[diffuseTexIndex].Sample(gsamLinearWrap, vertIn.TexC) * diffuseAlbedoMat;
-    float3 diffuseColor = lightStrength * diffuseAlbedo.rgb;
-    // 2.镜面光
-    // 2.1表面粗糙度
-    float3 halfDir =  normalize(viewDir + worldLightDir);
-    float m = (1.0f - roughness) * 256.0f;
-    float roughnessFactor = (m + 8.0f) * pow(max(dot(halfDir, worldNormal), 0.0f), m) / 8.0f;
-    // 2.2菲涅尔系数
-    float f0 = 1.0f - saturate(dot(halfDir, lightVec));
-    float3 fresnelFactor = fresnelR0 + (1.0f - fresnelR0)*(f0*f0*f0*f0*f0);
-    // 最终镜面光颜色
-    float3 specularColor = lightStrength * fresnelFactor * roughnessFactor;
-    // 3.环境光
+
+    float3 shadowFactor = 1.0f;
+    const float shininess = 1.0f - roughness;
+    Material mat = { diffuseAlbedo, fresnelR0, shininess};
+    float4 directLight = ComputeLighting(gLights, mat, vertIn.PosW, worldNormal, viewDir, shadowFactor);
+
+    // 环境光
     float4 ambientColor = gAmbientLight * diffuseAlbedo;
     // 最终颜色
-    float3 color = ambientColor.rgb + diffuseColor + specularColor;
-    return float4(color, diffuseAlbedo.a);
+    float4 litColor = ambientColor + directLight;
+    litColor.a = diffuseAlbedo.a;
+    return litColor;
 }
