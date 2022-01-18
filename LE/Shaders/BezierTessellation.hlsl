@@ -1,9 +1,6 @@
-#include "LightingUtil.hlsl"
 #include "BezierUtil.hlsl"
 
 #include "Common.hlsl"
-
-Texture2D gDiffuseMap : register(t0);
 
 StructuredBuffer<InstanceData> gInstanceData : register(t0, space1);
 StructuredBuffer<MaterialData> gMaterialData : register(t1, space1);

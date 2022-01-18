@@ -1,5 +1,3 @@
-#include "LightingUtil.hlsl"
-
 #include "Common.hlsl"
 
 Texture2D gDiffuseMap[5] : register(t0);
@@ -79,7 +77,7 @@ float4 PS(VertexOut vertIn) : SV_Target
     float m = (1.0f - roughness) * 256.0f;
     float roughnessFactor = (m + 8.0f) * pow(max(dot(halfDir, worldNormal), 0.0f), m) / 8.0f;
     // 2.2菲涅尔系数
-    float f0 = 1.0f - cosIncidentAngle;
+    float f0 = 1.0f - saturate(dot(halfDir, lightVec));
     float3 fresnelFactor = fresnelR0 + (1.0f - fresnelR0)*(f0*f0*f0*f0*f0);
     // 最终镜面光颜色
     float3 specularColor = lightStrength * fresnelFactor * roughnessFactor;

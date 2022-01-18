@@ -1,4 +1,5 @@
 #include "DataType.hlsl"
+#include "LightingUtil.hlsl"
 
 // cbuffer cbPerObject : register(b0)
 // {

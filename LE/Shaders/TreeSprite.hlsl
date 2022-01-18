@@ -1,5 +1,3 @@
-#include "LightingUtil.hlsl"
-
 #include "Common.hlsl"
 
 Texture2DArray gTreeMapArray : register(t0);
