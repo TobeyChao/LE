@@ -22,7 +22,7 @@ ImFont* font;
 Demo::Demo()
 {
 	mSceneBounds.Center = XMFLOAT3(0.0f, 0.0f, 0.0f);
-	mSceneBounds.Radius = sqrtf(10.0f * 10.0f + 15.0f * 15.0f);
+	mSceneBounds.Radius = 50.0f;
 }
 
 Demo::~Demo()
@@ -106,7 +106,6 @@ void Demo::Initialize(HWND hwnd, int clientWidth, int clientHeight)
 
 	// 创建描述符堆用于存储SRV
 	BuildDescriptorHeaps();
-	BuildShaderResourceViews();
 
 	// 流水线状态
 	BuildPSO();
@@ -158,6 +157,13 @@ void Demo::Update()
 		WaitForSingleObject(eventHandle, INFINITE);
 		CloseHandle(eventHandle);
 	}
+
+	//mLightRotationAngle += 0.1f * GameTimer::GetInstancePtr()->DeltaTime();
+
+	XMMATRIX R = XMMatrixRotationY(mLightRotationAngle);
+	XMVECTOR lightDir = XMLoadFloat3(&mBaseLightDirections);
+	lightDir = XMVector3TransformNormal(lightDir, R);
+	XMStoreFloat3(&mRotatedLightDirections, lightDir);
 
 	UpdateObjectCBs();
 	UpdateMainPassCB();
@@ -227,6 +233,22 @@ void Demo::Draw()
 	// Reusing the command list reuses memory.
 	ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), show_wireframe ? mPSOs["opaque_wireframe"].Get() : mPSOs["opaque_solid"].Get()));
 
+	// You can only bind descriptor heaps of type D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV and D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER.
+	// Only one descriptor heap of each type can be set at one time, which means a maximum of 2 heaps(one sampler, one CBV / SRV / UAV) can be set at one time.
+	// https://docs.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12graphicscommandlist-setdescriptorheaps
+	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap->RawDH() };
+	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+	auto matBuffer = mCurrFrameResource->MaterialCB->Resource();
+	CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mSrvDescriptorHeap->hGPU(0));
+
+	// 设置根签名
+	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+	mCommandList->SetGraphicsRootDescriptorTable(3, tex);
+	mCommandList->SetGraphicsRootShaderResourceView(2, matBuffer->GetGPUVirtualAddress());
+
+	DrawSceneToShadowMap();
+
 	mCommandList->RSSetViewports(1, &mScreenViewport);
 	mCommandList->RSSetScissorRects(1, &mScissorRect);
 
@@ -263,22 +285,11 @@ void Demo::Draw()
 		mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
 	}
 
-	// You can only bind descriptor heaps of type D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV and D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER.
-	// Only one descriptor heap of each type can be set at one time, which means a maximum of 2 heaps(one sampler, one CBV / SRV / UAV) can be set at one time.
-	// https://docs.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12graphicscommandlist-setdescriptorheaps
-	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
-	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-
-	auto matBuffer = mCurrFrameResource->MaterialCB->Resource();
-	CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
-
-	// 设置根参数
-	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
 	mCommandList->SetGraphicsRootConstantBufferView(1, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
-	mCommandList->SetGraphicsRootShaderResourceView(2, matBuffer->GetGPUVirtualAddress());
-	mCommandList->SetGraphicsRootDescriptorTable(3, tex);
+	mCommandList->SetGraphicsRootDescriptorTable(4, mSrvDescriptorHeap->hGPU(mShadowTexHeapIndex));
 
 	// 渲染不透明物体
+	mCommandList->SetPipelineState(mPSOs["opaque_solid"].Get());
 	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque]);
 
 	// 设置根参数
@@ -318,7 +329,8 @@ void Demo::Draw()
 	// 渲染天空
 	mCommandList->SetPipelineState(mPSOs["sky"].Get());
 	mCommandList->SetGraphicsRootSignature(mSkyRootSignature.Get());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Sky]);
+	mCommandList->SetGraphicsRootDescriptorTable(3, mSrvDescriptorHeap->hGPU(mSkyTexHeapIndex));
+	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Sky]);
 
 	if (mEnableMSAA)
 	{
@@ -475,7 +487,7 @@ void Demo::UpdateShadowTransform()
 		0.5f, 0.0f, 0.0f, 0.0f,
 		0.0f, -0.5f, 0.0f, 0.0f,
 		0.0f, 0.0f, 1.0f, 0.0f,
-		0.5f, 0.0f, 0.0f, 1.0f);
+		0.5f, 0.5f, 0.0f, 1.0f);
 
 	XMMATRIX S = lightView * lightProj * T;
 	XMStoreFloat4x4(&mLightView, lightView);
@@ -494,6 +506,7 @@ void Demo::UpdateMainPassCB()
 	XMMATRIX invView = XMMatrixInverse(&XMMatrixDeterminant(view), view);
 	XMMATRIX invProj = XMMatrixInverse(&XMMatrixDeterminant(proj), proj);
 	XMMATRIX invViewProj = XMMatrixInverse(&XMMatrixDeterminant(viewProj), viewProj);
+	XMMATRIX shadowTransform = XMLoadFloat4x4(&mShadowTransform);
 
 	XMStoreFloat4x4(&mMainPassCB.View, XMMatrixTranspose(view));
 	XMStoreFloat4x4(&mMainPassCB.InvView, XMMatrixTranspose(invView));
@@ -501,6 +514,8 @@ void Demo::UpdateMainPassCB()
 	XMStoreFloat4x4(&mMainPassCB.InvProj, XMMatrixTranspose(invProj));
 	XMStoreFloat4x4(&mMainPassCB.ViewProj, XMMatrixTranspose(viewProj));
 	XMStoreFloat4x4(&mMainPassCB.InvViewProj, XMMatrixTranspose(invViewProj));
+	XMStoreFloat4x4(&mMainPassCB.ShadowTransform, XMMatrixTranspose(shadowTransform));
+
 	mMainPassCB.EyePosW = mCameras["MainCamera"]->GetPosition3f();
 	mMainPassCB.RenderTargetSize = XMFLOAT2{ (float)mClientWidth, (float)mClientHeight };
 	mMainPassCB.InvRenderTargetSize = { 1.0f / mClientWidth, 1.0f / mClientHeight };
@@ -510,9 +525,7 @@ void Demo::UpdateMainPassCB()
 	mMainPassCB.DeltaTime = GameTimer::GetInstancePtr()->DeltaTime();
 	mMainPassCB.AmbientLight = { 0.25f, 0.25f, 0.35f, 1.0f };
 
-	XMVECTOR lightDir = -MathHelper::SphericalToCartesian(1.0f, mSunTheta, mSunPhi);
-
-	XMStoreFloat3(&mMainPassCB.Lights[0].Direction, lightDir);
+	mMainPassCB.Lights[0].Direction = mRotatedLightDirections;
 	mMainPassCB.Lights[0].Strength = { 1.0f, 1.0f, 1.0f };
 
 	currPassCB->CopyData(0, mMainPassCB);
@@ -726,20 +739,24 @@ void Demo::BuildRootSignature()
 {
 	// Default RootSignature
 	{
-		CD3DX12_DESCRIPTOR_RANGE texTable;
-		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0, 0);
+		CD3DX12_DESCRIPTOR_RANGE texTable0;
+		texTable0.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0, 0);
 
-		CD3DX12_ROOT_PARAMETER slotRootParameter[4];
+		CD3DX12_DESCRIPTOR_RANGE texTable1;
+		texTable1.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5, 0);
+
+		CD3DX12_ROOT_PARAMETER slotRootParameter[5];
 
 		// Perfomance TIP: Order from most frequent to least frequent.
 		slotRootParameter[0].InitAsShaderResourceView(0, 1);
 		slotRootParameter[1].InitAsConstantBufferView(0);
 		slotRootParameter[2].InitAsShaderResourceView(1, 1);
-		slotRootParameter[3].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
+		slotRootParameter[3].InitAsDescriptorTable(1, &texTable0, D3D12_SHADER_VISIBILITY_PIXEL);
+		slotRootParameter[4].InitAsDescriptorTable(1, &texTable1, D3D12_SHADER_VISIBILITY_PIXEL);
 
 		auto staticSamplers = GetStaticSamplers();
 
-		CD3DX12_ROOT_SIGNATURE_DESC rootSignDesc(4, slotRootParameter,
+		CD3DX12_ROOT_SIGNATURE_DESC rootSignDesc(5, slotRootParameter,
 			(UINT)staticSamplers.size(), staticSamplers.data(),
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
@@ -941,6 +958,10 @@ void Demo::BuildShadersAndInputLayout()
 
 	mShaders["skyVS"] = D3D12Util::CompileShader(L"Shaders\\Sky.hlsl", nullptr, "VS", "vs_5_1");
 	mShaders["skyPS"] = D3D12Util::CompileShader(L"Shaders\\Sky.hlsl", nullptr, "PS", "ps_5_1");
+
+	mShaders["shadowVS"] = D3D12Util::CompileShader(L"Shaders\\Shadow.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["shadowOpaquePS"] = D3D12Util::CompileShader(L"Shaders\\Shadow.hlsl", nullptr, "PS", "ps_5_1");
+	mShaders["shadowAlphaTestedPS"] = D3D12Util::CompileShader(L"Shaders\\Shadow.hlsl", alphaTestDefines, "PS", "ps_5_1");
 
 	mDefaultInputLayout =
 	{
@@ -1385,20 +1406,26 @@ void Demo::BuildFrameResources()
 
 void Demo::BuildDescriptorHeaps()
 {
-	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	srvHeapDesc.NodeMask = 0;
-	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	srvHeapDesc.NumDescriptors = 6;
-	ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(mSrvDescriptorHeap.GetAddressOf())));
-}
+	/*
+	* 0-4	: tex
+	* 5		: sky
+	* 6		: shadow
+	*/
 
-void Demo::BuildShaderResourceViews()
-{
+	mSrvDescriptorHeap = std::make_unique<CDescriptorHeapWrapper>();
+	mSrvDescriptorHeap->Create(mD3D12Device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 7, true);
+
+	//D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
+	//srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	//srvHeapDesc.NodeMask = 0;
+	//srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	//srvHeapDesc.NumDescriptors = 7;
+	//ThrowIfFailed(mD3D12Device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(mSrvDescriptorHeap.GetAddressOf())));
+
 	//
 	// Fill out the heap with actual descriptors.
 	//
-	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvDescriptorHeap->hCPU(0));
 
 	auto floorTex = mTextures["tex_grid"]->Resource;
 	auto woodCrateTex = mTextures["WoodCrate01"]->Resource;
@@ -1454,6 +1481,15 @@ void Demo::BuildShaderResourceViews()
 	srvDesc.TextureCube.MipLevels = skyTex->GetDesc().MipLevels;
 	srvDesc.TextureCube.ResourceMinLODClamp = 0.0f;
 	mD3D12Device->CreateShaderResourceView(skyTex.Get(), &srvDesc, hDescriptor);
+
+	mSkyTexHeapIndex = 5;
+	mShadowTexHeapIndex = mSkyTexHeapIndex + 1;
+
+	mShadowMap->BuildDescriptors(
+		CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->hCPU(mShadowTexHeapIndex)),
+		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->hGPU(mShadowTexHeapIndex)),
+		CD3DX12_CPU_DESCRIPTOR_HANDLE(mDsvHeap->hCPU(1))
+	);
 }
 
 void Demo::BuildRenderItems()
@@ -1646,6 +1682,8 @@ void Demo::BuildPSO()
 		// Shadow map pass does not have a render target.
 		smapPsoDesc.RTVFormats[0] = DXGI_FORMAT_UNKNOWN;
 		smapPsoDesc.NumRenderTargets = 0;
+		smapPsoDesc.SampleDesc.Count = 1;
+		smapPsoDesc.SampleDesc.Quality = 0;
 		ThrowIfFailed(mD3D12Device->CreateGraphicsPipelineState(&smapPsoDesc, IID_PPV_ARGS(&mPSOs["shadow_opaque"])));
 	}
 
@@ -1871,9 +1909,7 @@ void Demo::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector
 		cmdList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
 		cmdList->IASetPrimitiveTopology(ri->PrimitiveType);
 
-		CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
-		tex.Offset(ri->Mat->DiffuseSrvHeapIndex, mD3D12Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-		cmdList->SetGraphicsRootDescriptorTable(3, tex);
+		cmdList->SetGraphicsRootDescriptorTable(3, mSrvDescriptorHeap->hGPU(ri->Mat->DiffuseSrvHeapIndex));
 
 		D3D12_GPU_VIRTUAL_ADDRESS objAddress = objectCB->GetGPUVirtualAddress();
 		cmdList->SetGraphicsRootShaderResourceView(0, objAddress);
@@ -1887,8 +1923,6 @@ void Demo::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector
 
 void Demo::DrawRenderItemsNew(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)
 {
-	UINT objCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(ObjectConstants));
-
 	// For each render item...
 	for (size_t i = 0; i < ritems.size(); ++i)
 	{
@@ -1909,9 +1943,42 @@ void Demo::DrawRenderItemsNew(ID3D12GraphicsCommandList* cmdList, const std::vec
 
 void Demo::DrawSceneToShadowMap()
 {
+	// 设置视口
+	mCommandList->RSSetViewports(1, &mShadowMap->Viewport());
+	mCommandList->RSSetScissorRects(1, &mShadowMap->ScissorRect());
+
+	// 转换资源状态
+	mCommandList->ResourceBarrier(1,
+		&CD3DX12_RESOURCE_BARRIER::Transition(
+			mShadowMap->Resource(),
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			D3D12_RESOURCE_STATE_DEPTH_WRITE));
+
+	// 清理缓冲区
+	mCommandList->ClearDepthStencilView(mShadowMap->Dsv(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+
+	// 设置渲染目标
+	mCommandList->OMSetRenderTargets(0, nullptr, false, &mShadowMap->Dsv());
+
+	// 设置根参数
+	UINT passCBByteSize = D3D12Util::CalcConstantBufferByteSize(sizeof(PassConstants));
+	mCommandList->SetGraphicsRootConstantBufferView(1, mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress() + 2 * passCBByteSize);
+
+	// 设置Pipeline
+	mCommandList->SetPipelineState(mPSOs["shadow_opaque"].Get());
+
+	// 渲染
+	DrawRenderItemsNew(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque]);
+
+	// 恢复资源状态
+	mCommandList->ResourceBarrier(1,
+		&CD3DX12_RESOURCE_BARRIER::Transition(
+			mShadowMap->Resource(),
+			D3D12_RESOURCE_STATE_DEPTH_WRITE,
+			D3D12_RESOURCE_STATE_GENERIC_READ));
 }
 
-std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> Demo::GetStaticSamplers()
+std::array<const CD3DX12_STATIC_SAMPLER_DESC, 7> Demo::GetStaticSamplers()
 {
 	// Applications usually only need a handful of samplers.  So just define them all up front
 	// and keep them available as part of the root signature.  
@@ -1962,10 +2029,22 @@ std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> Demo::GetStaticSamplers()
 		0.0f,                              // mipLODBias
 		8);                                // maxAnisotropy
 
+	const CD3DX12_STATIC_SAMPLER_DESC shadow(
+		6, // shaderRegister
+		D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, // filter
+		D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressU
+		D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressV
+		D3D12_TEXTURE_ADDRESS_MODE_BORDER,  // addressW
+		0.0f,                               // mipLODBias
+		16,                                 // maxAnisotropy
+		D3D12_COMPARISON_FUNC_LESS_EQUAL,
+		D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK);
+
 	return {
 		pointWrap, pointClamp,
 		linearWrap, linearClamp,
-		anisotropicWrap, anisotropicClamp };
+		anisotropicWrap, anisotropicClamp,
+		shadow };
 }
 
 void Demo::BuildComputeBuffers()

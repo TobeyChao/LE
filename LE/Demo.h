@@ -72,7 +72,6 @@ public:
 	void BuildRenderItems();
 	void BuildFrameResources();
 	void BuildDescriptorHeaps();
-	void BuildShaderResourceViews();
 	void BuildPSO();
 
 	struct Data
@@ -88,7 +87,7 @@ public:
 	void DrawRenderItemsNew(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);
 	void DrawSceneToShadowMap();
 
-	std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> GetStaticSamplers();
+	std::array<const CD3DX12_STATIC_SAMPLER_DESC, 7> GetStaticSamplers();
 
 private:
 	void PrepareUI();
@@ -99,7 +98,7 @@ private:
 	int mCurrFrameResourceIndex = 0;
 
 	ComPtr<ID3D12RootSignature> mRootSignature = nullptr;
-	ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeap = nullptr;
+	std::unique_ptr<CDescriptorHeapWrapper> mSrvDescriptorHeap = nullptr;
 
 	std::unordered_map<std::string, ComPtr<ID3DBlob>> mShaders;
 	std::unordered_map<std::string, std::unique_ptr<MeshGeometry>> mGeometries;
@@ -147,9 +146,6 @@ private:
 	XMFLOAT3 mBaseLightDirections = XMFLOAT3(0.57735f, -0.57735f, 0.57735f);
 	XMFLOAT3 mRotatedLightDirections;
 
-	float mSunTheta = 1.25f * XM_PI;
-	float mSunPhi = XM_PIDIV4;
-
 	int NumDataElements = 32;
 	ComPtr<ID3D12RootSignature> mComputeRootSignature = nullptr;
 	ComPtr<ID3D12Resource> mComputeInputBufferA = nullptr;
@@ -162,4 +158,7 @@ private:
 	ComPtr<ID3D12RootSignature> mTessellationRootSignature = nullptr;
 	ComPtr<ID3D12RootSignature> mBillboardRootSignature = nullptr;
 	ComPtr<ID3D12RootSignature> mSkyRootSignature = nullptr;
+
+	UINT mSkyTexHeapIndex = 0;
+	UINT mShadowTexHeapIndex = 0;
 };

@@ -5,13 +5,6 @@
 StructuredBuffer<InstanceData> gInstanceData : register(t0, space1);
 StructuredBuffer<MaterialData> gMaterialData : register(t1, space1);
 
-SamplerState gsamPointWrap  : register(s0);
-SamplerState gsamPointClamp  : register(s0);
-SamplerState gsamLinearWrap  : register(s0);
-SamplerState gsamLinearClamp  : register(s0);
-SamplerState gsamAnisotropicWrap  : register(s0);
-SamplerState gsamAnisotropicClamp  : register(s0);
-
 struct VertexIn
 {
     float3 PosL : POSITION;

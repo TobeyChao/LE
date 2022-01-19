@@ -5,16 +5,10 @@
 #include "Common.hlsl"
 
 Texture2D gDiffuseMap[5] : register(t0);
+Texture2D gShadowMap : register(t5);
 
 StructuredBuffer<InstanceData> gInstanceData : register(t0, space1);
 StructuredBuffer<MaterialData> gMaterialData : register(t1, space1);
-
-SamplerState gsamPointWrap  : register(s0);
-SamplerState gsamPointClamp  : register(s0);
-SamplerState gsamLinearWrap  : register(s0);
-SamplerState gsamLinearClamp  : register(s0);
-SamplerState gsamAnisotropicWrap  : register(s0);
-SamplerState gsamAnisotropicClamp  : register(s0);
 
 struct VertexIn
 {
@@ -27,7 +21,8 @@ struct VertexIn
 struct VertexOut
 {
     float4 PosH : SV_POSITION;
-    float3 PosW : POSITION;
+    float4 ShadowPosH : POSITION0;
+    float3 PosW : POSITION1;
     float3 NormalW : NORMAL;
     float2 TexC : TEXCOORD;
     nointerpolation uint MatIndex  : MATINDEX;
@@ -50,6 +45,7 @@ VertexOut VS(VertexIn vertIn, uint instanceID : SV_INSTANCEID)
     float4 texC = mul(float4(vertIn.Texcoord, 0.0f, 1.0f), matData.MatTransform);
     vertOut.TexC = texC.xy;
     vertOut.NormalW = mul(vertIn.NormalL, (float3x3)world);
+    vertOut.ShadowPosH = mul(posW, gShadowTransform);
     return vertOut;
 }
 
@@ -67,7 +63,8 @@ float4 PS(VertexOut vertIn) : SV_Target
     // 视点方向
     float3 viewDir = normalize(gEyePosW - vertIn.PosW);
 
-    float3 shadowFactor = 1.0f;
+    float3 shadowFactor = float3(1.0f, 1.0f, 1.0f);
+    shadowFactor[0] = CalcShadowFactor(gShadowMap, gsamShadow, vertIn.ShadowPosH);
     const float shininess = 1.0f - roughness;
     Material mat = { diffuseAlbedo, fresnelR0, shininess};
     float4 directLight = ComputeLighting(gLights, mat, vertIn.PosW, worldNormal, viewDir, shadowFactor);

@@ -410,7 +410,7 @@ void D3D12App::CreateDescriptorHeap()
 	ThrowIfFailed(mRtvHeap->Create(mD3D12Device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, SwapChainBufferCount, false));
 
 	mDsvHeap = std::make_unique<CDescriptorHeapWrapper>();
-	ThrowIfFailed(mDsvHeap->Create(mD3D12Device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1, false));
+	ThrowIfFailed(mDsvHeap->Create(mD3D12Device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 2, false));
 
 	mImguiSrvHeap = std::make_unique<CDescriptorHeapWrapper>();
 	ThrowIfFailed(mImguiSrvHeap->Create(mD3D12Device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1, true));

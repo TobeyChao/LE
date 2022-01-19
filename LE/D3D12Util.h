@@ -144,6 +144,7 @@ struct PassConstants
 	DirectX::XMFLOAT4X4 InvProj;
 	DirectX::XMFLOAT4X4 ViewProj;
 	DirectX::XMFLOAT4X4 InvViewProj;
+	DirectX::XMFLOAT4X4 ShadowTransform;
 	DirectX::XMFLOAT3 EyePosW = { 0.0f, 0.0f, 0.0f };
 	float cbPerObjectPad1 = 0.0f;
 	DirectX::XMFLOAT2 RenderTargetSize = { 0.0f, 0.0f };
